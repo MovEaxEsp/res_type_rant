@@ -1,0 +1,93 @@
+<!DOCTYPE html>
+
+<html>
+
+<head>
+    <!--<script type="text/javascript" src="http://localhost:8000/pkg/res_type_rant.js" ></script>-->
+</head>
+
+<body>
+
+<script type="module">
+      // Use ES module import syntax to import functionality from the module
+      // that we have compiled.
+      //
+      // Note that the `default` import is an initialization function which
+      // will "boot" the module and make it ready to use. Currently browsers
+      // don't support natively imported WebAssembly as an ES module, but
+      // eventually the manual initialization won't be required!
+      import init, { run_frame, init_state } from './pkg/res_type_rant.js';
+
+      async function run() {
+        // First up we need to actually load the Wasm file, so we use the
+        // default export to inform it where the Wasm file is located on the
+        // server, and then we wait on the returned promise to wait for the
+        // Wasm to be loaded.
+        //
+        // It may look like this: `await init('./pkg/without_a_bundler_bg.wasm');`,
+        // but there is also a handy default inside `init` function, which uses
+        // `import.meta` to locate the Wasm file relatively to js file.
+        //
+        // Note that instead of a string you can also pass in any of the
+        // following things:
+        //
+        // * `WebAssembly.Module`
+        //
+        // * `ArrayBuffer`
+        //
+        // * `Response`
+        //
+        // * `Promise` which returns any of the above, e.g. `fetch("./path/to/wasm")`
+        //
+        // This gives you complete control over how the module is loaded
+        // and compiled.
+        //
+        // Also note that the promise, when resolved, yields the Wasm module's
+        // exports which is the same as importing the `*_bg` module in other
+        // modes
+        await init();
+
+        
+        const images = {};
+        
+        const loadPromises = [];
+        ["burger_top.png",  "burger_bottom.png"]
+        .forEach(name => {
+          let img = new Image()
+
+          let imgPromise = new Promise((resolve, _) => {
+            img.onload = resolve;
+          });
+          loadPromises.push(imgPromise);
+
+          img.src = `./images/${name}`;
+          images[name] = img;
+
+        });
+
+        await Promise.all(loadPromises);
+
+        //canvas = document.getElementById("myCanvas");
+        init_state(document.getElementById("canvas"), images);
+        //canvas.width = screen.width;
+        //canvas.height = screen.height;
+        //canvas.addEventListener('mousedown', handleMouseDown, false);
+        //canvas.addEventListener('mousemove', handleMouseMove, false);
+        //cRect = canvas.getBoundingClientRect();
+        //ctx = canvas.getContext("2d");
+
+        // And afterwards we can use all the functionality defined in wasm.
+        //greet();
+        //add_test(5, 6);
+
+        // Run at 30 FPS
+        setInterval(function() { run_frame(); }, 1000/30);
+      }
+
+      run();
+</script>
+
+<canvas id="canvas" style="border: 1px solid black; position: absolute; top: 50px; left: 50px" height="768" width="1024"></canvas>
+
+</body>
+</html>
