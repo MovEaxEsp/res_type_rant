@@ -16,7 +16,7 @@
       // will "boot" the module and make it ready to use. Currently browsers
       // don't support natively imported WebAssembly as an ES module, but
       // eventually the manual initialization won't be required!
-      import init, { run_frame, init_state } from './pkg/res_type_rant.js';
+      import init, { run_frame, report_keypress, init_state } from './pkg/res_type_rant.js';
 
       async function run() {
         // First up we need to actually load the Wasm file, so we use the
@@ -66,6 +66,11 @@
         });
 
         await Promise.all(loadPromises);
+
+        window.addEventListener("keydown", event => {
+          report_keypress(event.key);
+          event.preventDefault();
+        }, true)
 
         //canvas = document.getElementById("myCanvas");
         init_state(document.getElementById("canvas"), images);
