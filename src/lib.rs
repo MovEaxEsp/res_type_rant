@@ -29,6 +29,8 @@ struct ImageProps {
 enum Image {
     BurgerTop,
     BurgerBottom,
+    LettuceLeaf,
+    TomatoSlice,
 }
 
 // An object that can be drawn
@@ -227,19 +229,31 @@ impl OrderBar {
 
             order_bar.orders.remove(order_idx);
         }));
+
+        if self.orders.len() < 2 {
+            self.new_item_timer.set_cur(0.0);
+        }
     }
 
     fn create_order(&mut self) {
 
+        type Order = Vec<Image>;
+        let orders:Vec<Order> = vec![
+            vec![Image::BurgerBottom, Image::BurgerTop],
+            vec![Image::BurgerBottom, Image::LettuceLeaf, Image::BurgerTop],
+            vec![Image::BurgerBottom, Image::TomatoSlice, Image::BurgerTop],
+            vec![Image::BurgerBottom, Image::TomatoSlice, Image::LettuceLeaf, Image::BurgerTop],
+        ];
+
+        let ord_idx = (js_sys::Math::random() * (orders.len() as f64)) as usize;
+
         let mut new_order = IngredientStack::new(self.pos.xpos + 1000.0, self.pos.ypos);
-        new_order.add_ingredient(
-            MovableIngredient::new(Image::BurgerBottom, 0.0, 0.0, 800.0),
-            &self.pos,
-            true);
-        new_order.add_ingredient(
-            MovableIngredient::new(Image::BurgerTop, 0.0, 0.0, 800.0),
-            &self.pos,
-            true);
+        for ing in orders[ord_idx].iter() {
+            new_order.add_ingredient(
+                MovableIngredient::new(*ing, 0.0, 0.0, 800.0),
+                &self.pos,
+                true);
+        }
 
         let end_xpos = 20.0 + 120.0*self.orders.len() as f64;
         new_order.pos.set_end(Pos2d{xpos: end_xpos, ypos: self.pos.ypos});
@@ -277,7 +291,7 @@ struct IngredientArea {
 
 impl IngredientArea {
     fn new(ingredients: Vec<Image>, xpos: f64, ypos: f64, word_bank: &WordBank) -> Self {
-        let ingredient_words:Vec<Rc<String>> = (0..ingredients.len()).into_iter().map(|idx| word_bank.get_new_word()).collect();
+        let ingredient_words:Vec<Rc<String>> = (0..ingredients.len()).into_iter().map(|_idx| word_bank.get_new_word()).collect();
 
         IngredientArea {
             ingredients: ingredients,
@@ -434,6 +448,8 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
     let image_names = HashMap::from([
         (Image::BurgerTop, "burger_top.png"),
         (Image::BurgerBottom, "burger_bottom.png"),
+        (Image::LettuceLeaf, "lettuce_leaf.png"),
+        (Image::TomatoSlice, "tomato_slice.png"),
     ]);
 
     for (imgtype, imgname) in image_names {
@@ -449,6 +465,8 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
     let state_images = HashMap::from([
         image_def(Image::BurgerTop, 100.0, 30.0),
         image_def(Image::BurgerBottom, 100.0, 30.0),
+        image_def(Image::LettuceLeaf, 100.0, 30.0),
+        image_def(Image::TomatoSlice, 100.0, 30.0),
     ]);
 
     let order_bar = OrderBar::new(10.0, 20.0);
@@ -460,13 +478,20 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         &bad_words_db.dyn_into::<JsString>().expect("badWords").into(),
         game_config.word_level as usize);
 
+        
+    let ingredient_area= IngredientArea::new(
+        vec![Image::BurgerTop, Image::BurgerBottom, Image::LettuceLeaf, Image::TomatoSlice],
+        60.0,
+        300.0,
+        &words_bank);
+
     let state = GameState{
         canvas: canvas.dyn_into::<HtmlCanvasElement>().expect("canvas")
                 .get_context("2d").unwrap().unwrap()
                 .dyn_into::<CanvasRenderingContext2d>().unwrap(),
         images: state_images,
         order_bar: order_bar,
-        ingredient_area: IngredientArea::new(vec![Image::BurgerTop, Image::BurgerBottom], 60.0, 300.0, &words_bank),
+        ingredient_area: ingredient_area,
         preparation_area: PreparationArea::new(800.0, 300.0),
         frame_start: Instant::now(),
         elapsed_time: 0.0,
