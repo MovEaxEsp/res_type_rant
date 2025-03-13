@@ -47,7 +47,6 @@
         // modes
         await init();
 
-        
         const images = {};
         
         const loadPromises = [];
@@ -65,6 +64,34 @@
 
         });
 
+        // Return promise that will resolve to the downloaded content
+        function downloadDoc(url) {
+          var xmlHttp = new XMLHttpRequest();
+
+          let promise = new Promise((resolve, fail) => {
+            xmlHttp.onreadystatechange = () => {
+              if (xmlHttp.readyState == 4 && xmlHttp.status == 200) {
+                resolve(xmlHttp.responseText);
+              }
+            }
+          })
+
+          xmlHttp.open("GET", url, true); // true for asynchronous 
+          xmlHttp.send(null);
+
+          return promise;
+        }
+
+        let wordsDb = null;
+        loadPromises.push(downloadDoc("https://raw.githubusercontent.com/hermitdave/FrequencyWords/refs/heads/master/content/2018/en/en_50k.txt").then(text => {
+          wordsDb = text;
+        }));
+
+        let badWordsDb = null;
+        loadPromises.push(downloadDoc("https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/refs/heads/master/en").then(text => {
+          badWordsDb = text;
+        }));
+
         await Promise.all(loadPromises);
 
         window.addEventListener("keydown", event => {
@@ -72,8 +99,12 @@
           event.preventDefault();
         }, true)
 
+        let gameConfig = {
+          word_level: 0,
+        }
+
         //canvas = document.getElementById("myCanvas");
-        init_state(document.getElementById("canvas"), images);
+        init_state(gameConfig, document.getElementById("canvas"), images, wordsDb, badWordsDb);
         //canvas.width = screen.width;
         //canvas.height = screen.height;
         //canvas.addEventListener('mousedown', handleMouseDown, false);

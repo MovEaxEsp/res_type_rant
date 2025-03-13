@@ -1,14 +1,17 @@
 mod utils;
+use utils::{set_panic_hook, WordBank};
 
-use utils::set_panic_hook;
+mod interpolable;
+use interpolable::{Pos2d, Interpolable, InterpolableStore};
+
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
+use js_sys::JsString;
 use std::cell::RefCell;
-use std::cmp::min;
 use std::collections::HashMap;
 use std::rc::Rc;
-use std::ops::Deref;
 use web_time::Instant;
+use serde::{Serialize,Deserialize};
 
 #[wasm_bindgen]
 extern "C" {
@@ -34,174 +37,12 @@ trait Entity {
 }
 
 //////////// Interpolable
-trait Advanceable<T> {
-    fn advance(&mut self, end: T, speed: f64, elapsed_time: f64);
-}
 
-impl Advanceable<f64> for f64 {
-    fn advance(self:&mut f64, end: f64, speed: f64, elapsed_time: f64) {
-        if *self < end {
-            let move_amt = speed*elapsed_time;
-            if *self + move_amt > end {
-                *self = end;
-            }
-            else {
-                *self += move_amt;
-            }
-        }
-        else if *self > end {
-            let move_amt = speed*elapsed_time;
-            if *self - move_amt < end {
-                *self = end;
-            }
-            else {
-                *self -= move_amt;
-            }
-        }
-    }
-}
 
-#[derive(Clone, PartialEq)]
-struct Pos2d {
-    xpos: f64,
-    ypos: f64,
-}
 
-impl Advanceable<Pos2d> for Pos2d {
-    fn advance(self:&mut Pos2d, end: Pos2d, speed: f64, elapsed_time: f64) {
-        let x_diff = end.xpos - self.xpos;
-        let y_diff = end.ypos - self.ypos;
-        let dist = ((x_diff.powf(2.0) + y_diff).powf(2.0)).sqrt();
-        let move_amt = speed*elapsed_time;
-
-        if (dist < move_amt) {
-            *self = end;
-        }
-        else {
-            let x_prop = x_diff.abs() / (x_diff.abs() + y_diff.abs());
-            let x_move_amt = f64::min(x_diff.abs(), move_amt * x_prop);
-            if x_diff < 0.0 {
-                self.xpos -= x_move_amt;
-            }
-            else if x_diff > 0.0 {
-                self.xpos += x_move_amt;
-            }
-
-            let y_move_amt = f64::min(y_diff.abs(), move_amt * (1.0-x_prop));
-            if y_diff < 0.0 {
-                self.ypos -= y_move_amt;
-            }
-            else if y_diff > 0.0 {
-                self.ypos += y_move_amt;
-            }
-        }
-    }
-}
-
-struct InterpolableImp<T> {
-    cur: T,
-    end: T,
-    speed: f64, // units per second
-    moved_handler: RefCell<Box<dyn FnMut()>>,
-}
-
-impl<T> InterpolableImp<T>
-where T: Clone {
-    fn new(val: T, speed: f64) -> Self{
-        InterpolableImp {
-            cur: val.clone(),
-            end: val,
-            speed: speed,
-            moved_handler: RefCell::new(Box::new(|| {})),
-        }
-    }
-}
-
-#[derive(Clone)]
-struct Interpolable<T> {
-    imp: Rc<RefCell<InterpolableImp<T>>>,
-}
-
-impl<T> Interpolable<T>
-where T: Clone + PartialEq + Advanceable<T> {
-    fn new (val: T, speed: f64) -> Self {
-        Interpolable {
-            imp: Rc::new(RefCell::new(InterpolableImp::new(val, speed)))
-        }
-    }
-
-    fn is_moving(&self) -> bool {
-        let imp = self.imp.borrow();
-        imp.cur != imp.end
-    }
-
-    fn cur(&self) -> T {
-        self.imp.borrow().cur.clone()
-    }
-
-    fn end(&self) -> T {
-        self.imp.borrow().end.clone()
-    }
-
-    fn advance(&self, elapsed_time:f64) {
-        let mut done_cb: Box<dyn FnMut()> = Box::new(||{});
-        let mut have_done_cb = false;
-
-        {
-            let mut imp = self.imp.borrow_mut();
-            if imp.cur != imp.end {
-                let end = imp.end.clone();
-                let speed = imp.speed;
-                imp.cur.advance(end, speed, elapsed_time);
-                if imp.cur == imp.end {
-                    done_cb = imp.moved_handler.replace(done_cb);
-                    have_done_cb = true;
-                }
-            }
-        }
-
-        if have_done_cb {
-            done_cb();
-
-            let mut imp = self.imp.borrow_mut();
-            imp.moved_handler.replace(done_cb);
-        }
-    }
-
-    fn set_cur(&self, cur: T) {
-        self.imp.borrow_mut().cur = cur;
-    }
-
-    fn set_end(&self, end: T) {
-        self.imp.borrow_mut().end = end;
-    }
-
-    fn set_moved_handler(&self, handler: Box<dyn FnMut()>) {
-        self.imp.borrow_mut().moved_handler = RefCell::new(handler);
-    }
-}
-
-struct InterpolableStore {
-    interpolables_1d: Vec<Interpolable<f64>>,
-    interpolables_2d: Vec<Interpolable<Pos2d>>,
-}
-
-impl InterpolableStore {
-    fn new() -> Self {
-        InterpolableStore {
-            interpolables_1d: Vec::new(),
-            interpolables_2d: Vec::new(),
-        }
-    }
-
-    fn advance_all(&self, elapsed_time: f64) {
-        for intr in self.interpolables_1d.iter() {
-            intr.advance(elapsed_time);
-        }
-        for intr in self.interpolables_2d.iter() {
-            intr.advance(elapsed_time);
-        }
-    }
+#[derive(Serialize, Deserialize)]
+struct GameConfig {
+    word_level: i32,
 }
 
 ///////// GameState
@@ -209,13 +50,14 @@ impl InterpolableStore {
 struct GameState {
     canvas: CanvasRenderingContext2d,
     images: HashMap<Image, ImageProps>,
-    entities: Vec<Rc<dyn Entity>>,
     order_bar: Rc<RefCell<OrderBar>>,
     ingredient_area: IngredientArea,
     preparation_area: PreparationArea,
     frame_start: Instant,  // time when previous frame started
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
     entered_text: String,
+    words_bank: WordBank,
+    config: GameConfig,
 }
 
 impl GameState {
@@ -261,11 +103,12 @@ impl GameState {
         }
         else {
             self.ingredient_area.find_ingredient(&self.entered_text,
-                                                 &mut self.preparation_area);
+                                                 &mut self.preparation_area,
+                                                &self.words_bank);
         }
     }
 
-    fn handle_key(&mut self, key: &str, state_rc: &Rc<RefCell<GameState>>) {
+    fn handle_key(&mut self, key: &str, _state_rc: &Rc<RefCell<GameState>>) {
         if key.len() == 1 {
             self.entered_text.push(key.chars().nth(0).unwrap());
         }
@@ -332,7 +175,7 @@ impl OrderBar {
         ret
     }
 
-    fn try_submit_order(&mut self, mut order: IngredientStack, self_rc: Rc<RefCell<Self>>) {
+    fn try_submit_order(&mut self, order: IngredientStack, self_rc: Rc<RefCell<Self>>) {
         for i in 0..self.orders.len() {
             let bar_order = &self.orders[i];
             if order.ingredients.len() != bar_order.ingredients.len() {
@@ -341,7 +184,7 @@ impl OrderBar {
 
             let mut is_match = true;
             for ing_idx in 0..order.ingredients.len() {
-                if order.ingredients[i].image != bar_order.ingredients[i].image {
+                if order.ingredients[ing_idx].image != bar_order.ingredients[ing_idx].image {
                     is_match = false;
                     break; 
                 }
@@ -369,7 +212,7 @@ impl OrderBar {
     }
 
     fn serve_order(&mut self, order_idx: usize, self_rc: Rc<RefCell<Self>>) {
-        let mut order = &self.orders[order_idx];
+        let order = &self.orders[order_idx];
         let cur_pos = order.pos.cur();
         order.pos.set_end(Pos2d{xpos:cur_pos.xpos, ypos: -100.0});
 
@@ -428,15 +271,13 @@ impl OrderBar {
 
 struct IngredientArea {
     ingredients: Vec<Image>,
-    ingredient_words: Vec<String>,
+    ingredient_words: Vec<Rc<String>>,
     pos: Pos2d,
 }
 
 impl IngredientArea {
-    fn new(ingredients: Vec<Image>, xpos: f64, ypos: f64) -> Self {
-        let word_bank = ["foo", "bar", "baz"];
-
-        let ingredient_words:Vec<String> = (0..ingredients.len()).into_iter().map(|idx| word_bank[idx].to_string()).collect();
+    fn new(ingredients: Vec<Image>, xpos: f64, ypos: f64, word_bank: &WordBank) -> Self {
+        let ingredient_words:Vec<Rc<String>> = (0..ingredients.len()).into_iter().map(|idx| word_bank.get_new_word()).collect();
 
         IngredientArea {
             ingredients: ingredients,
@@ -461,15 +302,16 @@ impl IngredientArea {
         }
     }
 
-    fn find_ingredient(&self, keyword: &String, prep:&mut PreparationArea) {
+    fn find_ingredient(&mut self, keyword: &String, prep:&mut PreparationArea, word_bank: &WordBank) {
         for i in 0..self.ingredients.len() {
-            if self.ingredient_words[i] == *keyword {
-                log(&format!("Found ingredient: {}", keyword));
+            let ing_word: &String = &self.ingredient_words[i];
+            if ing_word == keyword {
+                self.ingredient_words[i] = word_bank.get_new_word();
                 prep.plate.add_ingredient(
                     MovableIngredient::new(
                         self.ingredients[i],
-                        (120.0 * ((i%6) as f64)),
-                        (80.0 * ((i/6) as f64)),
+                        120.0 * ((i%6) as f64),
+                        80.0 * ((i/6) as f64),
                         500.0,
                     ),
                     &self.pos,
@@ -477,8 +319,6 @@ impl IngredientArea {
                 return;
             }
         }
-
-        log(&format!("Didn't find ingredient: {}", keyword));
     }
 
 }
@@ -498,10 +338,6 @@ impl MovableIngredient {
     
     fn collect_interpolables(&self, dest: &mut InterpolableStore) {
         dest.interpolables_2d.push(self.pos.clone());
-    }
-
-    fn is_moving(&self) -> bool {
-        self.pos.is_moving()
     }
 
     fn draw(&self, base_pos: &Pos2d, state: &GameState) {
@@ -539,7 +375,7 @@ impl IngredientStack {
         }
     }
 
-    fn add_ingredient(&mut self, mut ingredient: MovableIngredient, cur_base_pos: &Pos2d, immediate: bool) {
+    fn add_ingredient(&mut self, ingredient: MovableIngredient, cur_base_pos: &Pos2d, immediate: bool) {
         let end = Pos2d {
             xpos: 0.0,
             ypos: 300.0 - (((self.ingredients.len()+1) as f64) *50.0)
@@ -565,16 +401,16 @@ impl IngredientStack {
 
 ///////// PreparationArea
 struct PreparationArea {
-    xpos: f64,
-    ypos: f64,
+    //xpos: f64,
+    //ypos: f64,
     plate: IngredientStack,
 }
 
 impl PreparationArea {
     fn new(xpos: f64, ypos: f64) -> Self {
         PreparationArea {
-            xpos: xpos,
-            ypos: ypos,
+            //xpos: xpos,
+            //ypos: ypos,
             plate: IngredientStack::new(xpos+10.0, ypos+10.0),
         }
     }
@@ -589,7 +425,7 @@ impl PreparationArea {
 }
 
 #[wasm_bindgen]
-pub fn init_state(canvas: JsValue, images: JsValue) {
+pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: JsValue, bad_words_db: JsValue) {
 
     set_panic_hook();
 
@@ -617,18 +453,27 @@ pub fn init_state(canvas: JsValue, images: JsValue) {
 
     let order_bar = OrderBar::new(10.0, 20.0);
 
+    let game_config: GameConfig = serde_wasm_bindgen::from_value(config).unwrap();
+
+    let words_bank = WordBank::new(
+        &words_db.dyn_into::<JsString>().expect("wordsDb").into(),
+        &bad_words_db.dyn_into::<JsString>().expect("badWords").into(),
+        game_config.word_level as usize);
+
     let state = GameState{
         canvas: canvas.dyn_into::<HtmlCanvasElement>().expect("canvas")
                 .get_context("2d").unwrap().unwrap()
                 .dyn_into::<CanvasRenderingContext2d>().unwrap(),
         images: state_images,
-        entities: Vec::new(),
         order_bar: order_bar,
-        ingredient_area: IngredientArea::new(vec![Image::BurgerTop, Image::BurgerBottom], 60.0, 300.0),
+        ingredient_area: IngredientArea::new(vec![Image::BurgerTop, Image::BurgerBottom], 60.0, 300.0, &words_bank),
         preparation_area: PreparationArea::new(800.0, 300.0),
         frame_start: Instant::now(),
         elapsed_time: 0.0,
         entered_text: String::new(),
+        words_bank: words_bank,
+        config: game_config,
+
     };
 
     unsafe {

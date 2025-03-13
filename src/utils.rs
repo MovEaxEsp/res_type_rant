@@ -1,3 +1,8 @@
+use std::collections::HashSet;
+use std::rc::Rc;
+use js_sys::Reflect::get;
+use js_sys::Math;
+
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the
     // `set_panic_hook` function at least once during initialization, and then
@@ -9,7 +14,83 @@ pub fn set_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+pub struct WordBank {
+    words: Vec<Rc<String>>,
+}
 
+impl WordBank {
+    // Create a WordBank with words at the specified 'word_level' using the specified 'words_db'
+    // and excluding any words in the specified 'bad_words_db'. 'words_db' 
+    // contains a word per line, along with a 'frequency' count of how often that
+    // word is used.
+    pub fn new(words_db: &String, bad_words_db: &String, word_level: usize) -> Self {
+        let mut bad_words: HashSet<String> = HashSet::new();
+        for line in bad_words_db.split('\n') {
+            if line.contains(' ') {
+                continue; // ignore multi-word lines
+            }
+
+            bad_words.insert(line.to_string());
+        }
+
+        let mut ret:Vec<Rc<String>> = Vec::new();
+
+        let mut processed_words= 0;
+        for line in words_db.split('\n') {
+            if line.len() == 0 {
+                continue;
+            }
+            let mut line_iter = line.split(' ');
+            let word = line_iter.next().unwrap();
+            let count:i32 = line_iter.next().expect(&format!("line: '{}'",line)).parse::<i32>().expect(line);
+
+            if word.chars().nth(0).unwrap() == '\'' ||  // skip entries starting with apostrophe
+            word.len() == 1 || // skip single character "words"
+            bad_words.contains(word) // skip bad words
+            { 
+                continue;
+            }
+
+            processed_words += 1;
+
+            // Figure out the word's difficulty, from 0(easiest) to 4(hardest)
+            // for 4+ chars, difficulty is 'len - 4'
+            // words within 70% of max_count get +0, 50% +1, 30% +2, <30% +3
+
+            let mut word_score = processed_words/20000;
+            if word.len() > 4 {
+                word_score += word.len() - 4;
+            }
+
+            if word_score > 4 {
+                word_score = 4;
+            }
+
+            if word_score == word_level {
+                ret.push(Rc::new(word.to_string()));
+            }
+        }
+
+        WordBank {
+            words: ret,
+        }
+    }
+
+    pub fn get_new_word(&self) -> Rc<String> {
+        //let mut rng = rand::thread_rng();
+
+        let mut idx: usize = 0;
+        loop {
+            idx = (Math::random() *(self.words.len() as f64)) as usize;
+            //idx = rng.gen_range(0, self.words.len());
+            if Rc::strong_count(&self.words[idx]) == 1 {
+                break;
+            }
+        }
+
+        return self.words[idx].clone();
+    }
+}
 
 
 /////// DEAD CODE
