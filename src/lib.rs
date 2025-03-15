@@ -1,8 +1,17 @@
-mod utils;
-use utils::{set_panic_hook, WordBank};
-
+mod ingredients;
+mod ingredient_area;
 mod interpolable;
-use interpolable::{Pos2d, Interpolable, InterpolableStore};
+mod order_bar;
+mod preparation_area;
+mod traits;
+mod utils;
+
+use ingredient_area::IngredientArea;
+use interpolable::InterpolableStore;
+use order_bar::OrderBar;
+use preparation_area::PreparationArea;
+use traits::{Image, ImageProps, BaseGame, GameConfig};
+use utils::{set_panic_hook, WordBank};
 
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -12,46 +21,11 @@ use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
 use web_time::Instant;
-use serde::{Serialize,Deserialize};
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
-}
-
-struct ImageProps {
-    image: HtmlImageElement,
-    cooked_image: Option<Image>,
-    width: f64,
-    height: f64,
-}
-
-#[derive(PartialEq, Eq, Hash, Copy, Clone)]
-enum Image {
-    Plate,
-    Pan,
-    BurgerTop,
-    BurgerBottom,
-    LettuceLeaf,
-    TomatoSlice,
-    RawPatty,
-    CookedPatty,
-}
-
-// An object that can be drawn
-trait Entity {
-    fn draw(&self, _game: &GameState) {}
-}
-
-//////////// Interpolable
-
-
-
-#[derive(Serialize, Deserialize)]
-struct GameConfig {
-    word_level: i32,
-    draw_borders: bool,
 }
 
 ///////// GameState
@@ -71,7 +45,7 @@ struct GameState {
     config: GameConfig,
 }
 
-impl GameState {
+impl BaseGame for GameState {
     fn draw_image(&self, image: &Image, xpos: f64, ypos: f64) {
 
         let props = self.images.get(image).unwrap();
@@ -121,6 +95,16 @@ impl GameState {
         self.canvas.stroke_text(&text, xpos, ypos).expect("text");
     }
 
+    fn config<'a>(&'a self) -> &'a GameConfig {
+        &self.config
+    } 
+
+    fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps {
+        &self.images[image]
+    }
+}
+
+impl GameState {
     fn draw(&self) {
 
         self.canvas.rect(0.0, 0.0, 2560.0, 1440.0);
@@ -181,508 +165,6 @@ impl GameState {
 }
 
 static mut S_STATE: Option<Rc<RefCell<GameState>>> = None;
-
-///////////// OrderBar
-
-// Manager for the list of orders at the top of the screen
-
-struct OrderBar {
-    orders: Vec<IngredientStack>,
-    pos: Pos2d,
-    new_item_timer: Interpolable<f64>,
-    submitted_order: Option<IngredientStack>,
-}
-
-impl Entity for OrderBar {
-    fn draw(&self, state: &GameState) {
-        for i in 0..self.orders.len() {
-            self.orders[i].draw(state);
-        }
-
-        for submitted in self.submitted_order.iter() {
-            submitted.draw(state);
-        }
-
-        if state.config.draw_borders {
-            state.draw_border(self.pos.xpos, self.pos.ypos, 600.0, IngredientStack::height());
-        }
-    }
-}
-
-impl OrderBar {
-    fn new(xpos: f64, ypos: f64) -> Rc<RefCell<Self>> {
-        let new_item_timer = Interpolable::new(0.0, 1.0);
-        new_item_timer.set_end(3.0);
-
-        let ret= Rc::new(RefCell::new(OrderBar {
-            orders: Vec::new(),
-            pos: Pos2d{xpos:xpos, ypos:ypos},
-            new_item_timer: Interpolable::new(0.0, 1.0),
-            submitted_order: None,
-        }));
-
-        let cb_ret: Rc<RefCell<OrderBar>> = ret.clone();
-
-        ret.borrow().new_item_timer.set_moved_handler(Box::new(move || {
-            let inner_ret = cb_ret.clone();
-            inner_ret.borrow_mut().create_order();
-        }));
-        ret.borrow_mut().new_item_timer.set_end(2.0);
-
-        ret
-    }
-
-    fn try_submit_order(&mut self, order: IngredientStack, self_rc: Rc<RefCell<Self>>) -> bool{
-        for i in 0..self.orders.len() {
-            let bar_order = &self.orders[i];
-            if order.ingredients.len() != bar_order.ingredients.len() {
-                continue;
-            }
-
-            let mut is_match = true;
-            for ing_idx in 0..order.ingredients.len() {
-                if order.ingredients[ing_idx].image != bar_order.ingredients[ing_idx].image {
-                    is_match = false;
-                    break; 
-                }
-            }
-
-            if !is_match {
-                continue;
-            }
-
-            // found a matching order
-            order.pos.set_end(bar_order.pos.cur());
-
-            let local_self_rc = self_rc.clone();
-
-            order.pos.set_moved_handler(Box::new(move || {
-                let next_local_self_rc =local_self_rc.clone();
-                let mut order_bar = local_self_rc.borrow_mut();
-                order_bar.serve_order(i, next_local_self_rc);
-                order_bar.submitted_order = None;
-            }));
-
-            self.submitted_order = Some(order);
-            return true;
-        }
-
-        return false;
-    }
-
-    fn serve_order(&mut self, order_idx: usize, self_rc: Rc<RefCell<Self>>) {
-        let order = &self.orders[order_idx];
-        let cur_pos = order.pos.cur();
-        order.pos.set_end(Pos2d{xpos:cur_pos.xpos, ypos: -100.0});
-
-        for i in (order_idx+1)..self.orders.len() {
-            self.orders[i].pos.set_end(self.orders[i-1].pos.cur());
-        }
-
-        let local_self_rc = self_rc.clone();
-
-        order.pos.set_moved_handler(Box::new(move || {
-            let mut order_bar = local_self_rc.borrow_mut();
-
-            order_bar.orders.remove(order_idx);
-        }));
-
-        if self.orders.len() < 2 {
-            self.new_item_timer.set_cur(0.0);
-        }
-    }
-
-    fn create_order(&mut self) {
-
-        struct Ing {
-            image: Image,
-            chance: f64,
-        }
-
-        fn ing(image: Image, chance: f64) -> Ing {
-            Ing {
-                image: image,
-                chance: chance,
-            }
-        }
-
-        type Order = Vec<Ing>;
-        let orders:Vec<Order> = vec![
-            vec![ing(Image::BurgerBottom, 1.0), ing(Image::CookedPatty, 1.0), ing(Image::LettuceLeaf, 0.5), ing(Image::TomatoSlice, 0.5), ing(Image::BurgerTop, 1.0)],
-        ];
-
-        let ord_idx = (js_sys::Math::random() * (orders.len() as f64)) as usize;
-
-        let mut new_order = IngredientStack::new(self.pos.xpos + 1000.0, self.pos.ypos);
-        for ing in orders[ord_idx].iter() {
-            let ing_chance = js_sys::Math::random();
-            if ing_chance > ing.chance {
-                continue;
-            }
-
-            new_order.add_ingredient(
-                MovableIngredient::new(ing.image, 0.0, 0.0, 800.0),
-                &self.pos,
-                true);
-        }
-
-        let end_xpos = 20.0 + 120.0*self.orders.len() as f64;
-        new_order.pos.set_end(Pos2d{xpos: end_xpos, ypos: self.pos.ypos});
-
-        self.orders.push(new_order);
-
-        if self.orders.len() < 5 {
-            self.new_item_timer.set_cur(0.0);
-        }
-    }
-}
-
-impl OrderBar {
-    
-    fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        dest.interpolables_1d.push(self.new_item_timer.clone());
-
-        for order in self.orders.iter() {
-            order.collect_interpolables(dest);
-        }
-
-        for submitted in self.submitted_order.iter() {
-            submitted.collect_interpolables(dest);
-        }
-    }
-}
-
-//////////////// IngredientArea
-
-struct IngredientArea {
-    ingredients: Vec<Image>,
-    ingredient_words: Vec<Rc<String>>,
-    pos: Pos2d,
-}
-
-impl IngredientArea {
-    fn new(ingredients: Vec<Image>, xpos: f64, ypos: f64, word_bank: &WordBank) -> Self {
-        let ingredient_words:Vec<Rc<String>> = (0..ingredients.len()).into_iter().map(|_idx| word_bank.get_new_word()).collect();
-
-        IngredientArea {
-            ingredients: ingredients,
-            ingredient_words: ingredient_words,
-            pos: Pos2d { xpos: xpos, ypos: ypos },
-        }
-    }
-
-    fn draw(&self, state: &GameState) {
-        // Draw the ingredients in a 6x3 grid
-
-        for i in 0..self.ingredients.len() {
-            let xpos = self.pos.xpos + (120.0 * ((i % 6) as f64));
-            let ypos = self.pos.ypos + (80.0 * ((i/6) as f64));
-
-            state.draw_image(&self.ingredients[i], xpos, ypos);
-
-            state.draw_command_text(xpos, ypos + 80.0, &self.ingredient_words[i]);
-        }
-
-        if state.config.draw_borders {
-            state.draw_border(self.pos.xpos, self.pos.ypos, (120*6) as f64, (80*3) as f64);
-        }
-    }
-
-    fn handle_command(&mut self, keyword: &String, prep: &mut PreparationArea, word_bank: &WordBank) -> bool{
-        for i in 0..self.ingredients.len() {
-            let ing_word: &String = &self.ingredient_words[i];
-            if ing_word == keyword {
-                self.ingredient_words[i] = word_bank.get_new_word();
-                prep.send_ingredient(
-                    MovableIngredient::new(
-                        self.ingredients[i],
-                        120.0 * ((i%6) as f64),
-                        80.0 * ((i/6) as f64),
-                        500.0,
-                    ),
-                    &self.pos,
-                    word_bank);
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-}
-
-
-struct MovableIngredient {
-    image: Image,
-    pos: Interpolable<Pos2d>,
-}
-
-impl MovableIngredient {
-    fn new(image: Image, xpos: f64, ypos: f64, speed: f64) -> Self {
-        MovableIngredient {
-            image: image,
-            pos: Interpolable::<Pos2d>::new(Pos2d{xpos, ypos}, speed),
-        }
-    }
-    
-    fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        dest.interpolables_2d.push(self.pos.clone());
-    }
-
-    fn draw(&self, base_pos: &Pos2d, state: &GameState) {
-        let pos = self.pos.cur();
-        state.draw_image(&self.image,
-                         base_pos.xpos + pos.xpos,
-                         base_pos.ypos + pos.ypos);
-    }
-}
-
-///////// IngredientStack
-struct IngredientStack {
-    ingredients: Vec<MovableIngredient>,
-    pos: Interpolable<Pos2d>,
-}
-
-impl IngredientStack {
-    fn new(xpos: f64, ypos: f64) -> Self {
-        IngredientStack {
-            ingredients: Vec::new(),
-            pos: Interpolable::<Pos2d>::new(Pos2d{xpos: xpos, ypos: ypos}, 500.0),
-        }
-    }
-
-    fn height() -> f64 {
-        150.0
-    }
-
-    fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        dest.interpolables_2d.push(self.pos.clone());
-        for item in self.ingredients.iter() {
-            item.collect_interpolables(dest);
-        }
-    }
-
-    fn draw(&self, state: &GameState) {
-        for item in self.ingredients.iter() {
-            item.draw(&self.pos.cur(), state);
-        }
-    }
-
-    fn add_ingredient(&mut self, ingredient: MovableIngredient, cur_base_pos: &Pos2d, immediate: bool) {
-        let end = Pos2d {
-            xpos: 0.0,
-            ypos: IngredientStack::height() - (((self.ingredients.len()+1) as f64) *35.0)
-        };
-
-        let my_base = self.pos.cur();
-
-        let cur_pos = ingredient.pos.cur();
-        let cur_x_transformed = cur_base_pos.xpos + cur_pos.xpos - my_base.xpos;
-        let cur_y_transformed = cur_base_pos.ypos + cur_pos.ypos - my_base.ypos;
-
-        if immediate {
-            ingredient.pos.set_cur(end.clone());
-        }
-        else {
-            ingredient.pos.set_cur(Pos2d{xpos: cur_x_transformed, ypos: cur_y_transformed});
-        }
-        ingredient.pos.set_end(end);
-
-        self.ingredients.push(ingredient);
-    }
-}
-
-///////// PreparationAreaStack
-struct PreparationAreaStack {
-    stack: IngredientStack,
-    base_image: Image,
-    is_selected: bool,
-    keyword: Rc<String>,
-    end_progress: Interpolable<f64>,
-}
-
-impl PreparationAreaStack {
-    fn new(xpos: f64, ypos: f64, base_image: &Image, keyword: Rc<String>) -> Self {
-        PreparationAreaStack {
-            stack: IngredientStack::new(xpos, ypos),
-            base_image: *base_image,
-            is_selected: false,
-            keyword: keyword,
-            end_progress: Interpolable::new(0.0, 0.2),
-        }
-    }
-
-    fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        self.stack.collect_interpolables(dest);
-
-        dest.interpolables_1d.push(self.end_progress.clone());
-    }
-
-    fn draw(&self, state: &GameState) {
-
-        let props = &state.images[&self.base_image];
-        if self.is_selected{
-            state.draw_halo(
-                self.stack.pos.cur().xpos,
-                self.stack.pos.cur().ypos + IngredientStack::height(),
-                props.width*1.2,
-                props.height*1.2);  
-        }
-        else {
-            state.draw_command_text(
-                self.stack.pos.cur().xpos,
-                self.stack.pos.cur().ypos + IngredientStack::height() + props.height + 50.0,
-                &self.keyword);
-        }
-        state.draw_image(
-            &self.base_image,
-            self.stack.pos.cur().xpos + 10.0,
-            self.stack.pos.cur().ypos + IngredientStack::height());
-
-        if self.end_progress.is_moving() {
-            // Draw the ingredients transitioning to their cooked versions, if they have one
-
-            // Make a temporary stack of the cooked versions of our ingredients
-            let cooked_stack = IngredientStack::new(self.stack.pos.cur().xpos, self.stack.pos.cur().ypos);
-            for ing in self.stack.ingredients.iter() {
-                let mut cooked_ing = ing.image;
-                if let Some(cooked_img) = &state.images[&ing.image].cooked_image {
-                    cooked_ing = *cooked_img;
-                }
-
-                cooked_stack.add_ingredient(cooked_ing, &Pos2d{xpos: 0.0, ypos: 0.0}, false);
-                todo finish here
-            }
-        }
-    }
-}
-
-///////// PreparationArea
-struct PreparationArea {
-    xpos: f64,
-    ypos: f64,
-    plate: PreparationAreaStack,
-    pan: PreparationAreaStack,
-}
-
-impl PreparationArea {
-    fn new(xpos: f64, ypos: f64, word_bank: &WordBank) -> Rc<RefCell<Self>> {
-
-        let mut ret = Rc::new(RefCell::new(PreparationArea {
-            xpos: xpos,
-            ypos: ypos,
-            plate: PreparationAreaStack::new(xpos+10.0, ypos+10.0, &Image::Plate, word_bank.get_new_word()),
-            pan: PreparationAreaStack::new(xpos + 180.0, ypos+10.0,&Image::Pan, word_bank.get_new_word()),
-        }));
-
-        ret.borrow_mut().plate.is_selected = true;
-
-        let cb_ref = ret.clone();
-        ret.borrow().pan.end_progress.set_moved_handler(Box::new(move || {
-            let cb_self = cb_ref.borrow_mut();
-            cb_self.handle_pan_done();
-        }));
-
-        ret
-    }
-
-    fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        self.plate.collect_interpolables(dest);
-        self.pan.collect_interpolables(dest);
-    }
-
-    fn handle_pan_done(&self) {
-        // Nothing for now?
-    }
-
-    fn send_ingredient(&mut self, ingredient: MovableIngredient, cur_base_pos: &Pos2d, word_bank: &WordBank) {
-        if self.plate.is_selected {
-
-            if ingredient.image != Image::RawPatty {
-                self.plate.stack.add_ingredient(ingredient, cur_base_pos, false);
-            }
-        }
-        else if self.pan.is_selected {
-            // Always go back to plate after sending something to pan
-            self.pan.keyword = word_bank.get_new_word();
-            self.pan.is_selected = false;
-            self.plate.is_selected = true;
-
-            if ingredient.image == Image::RawPatty {
-                self.pan.stack.add_ingredient(ingredient, cur_base_pos, false);
-                self.pan.end_progress.set_end(1.0);
-            }
-        }
-    }
-
-    fn handle_command(&mut self, command: &String, order_bar: &Rc<RefCell<OrderBar>>, word_bank: &WordBank) -> bool {
-        if  command == "trash" {
-            self.plate.stack.ingredients.clear();
-            return true;
-        }
-        
-        if command == "send" {
-            let order_bar_rc= order_bar.clone();
-
-            let done_order = &mut self.plate.stack;
-            let mut new_order = IngredientStack::new(done_order.pos.cur().xpos,
-                                                                      done_order.pos.cur().ypos); 
-            std::mem::swap(&mut new_order.ingredients, &mut done_order.ingredients);
-
-            order_bar.borrow_mut().try_submit_order(new_order,
-                                                    order_bar_rc);
-            return true;
-        }
-        
-        if !self.plate.is_selected {
-            if *self.plate.keyword == *command {
-                self.plate.is_selected = true;
-                self.plate.keyword = word_bank.get_new_word();
-                self.pan.is_selected = false;
-                return true;
-            }
-        }
-
-        if !self.pan.is_selected {
-            if *self.pan.keyword == *command {
-                self.pan.is_selected = true;
-                self.pan.keyword = word_bank.get_new_word();
-                self.plate.is_selected = false;
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    fn draw(&self, state: &GameState) {
-
-        let plate_props = &state.images[&Image::Plate];
-        if let Some(word) = &self.plate_word {
-            state.draw_command_text(self.xpos, self.ypos + IngredientStack::height() + plate_props.height + 50.0,&word);
-        }
-        else {
-            state.draw_halo(self.xpos+10.0, self.ypos + IngredientStack::height(), plate_props.width*1.2, plate_props.height*1.2);
-        }
-        state.draw_image(&Image::Plate, self.xpos + 10.0, self.ypos + IngredientStack::height());
-
-        let pan_props = &state.images[&Image::Pan];
-        if let Some(word) = &self.pan_word {
-            state.draw_command_text(self.xpos + 190.0, self.ypos + IngredientStack::height() + pan_props.height + 50.0,&word);
-        }
-        else {
-            state.draw_halo(self.xpos+180.0, self.ypos + IngredientStack::height(), pan_props.width*1.2, pan_props.height*1.2);
-        }
-        state.draw_image(&Image::Pan, self.xpos + 180.0, self.ypos + IngredientStack::height());
-
-        self.plate.draw(state);
-        self.pan.draw(state);
-
-        if state.config.draw_borders {
-            state.draw_border(self.xpos, self.ypos, 300.0, IngredientStack::height());
-        }
-    }
-}
 
 #[wasm_bindgen]
 pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: JsValue, bad_words_db: JsValue) {
