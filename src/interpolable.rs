@@ -98,12 +98,10 @@ where T: Clone + PartialEq + Advanceable<T> {
         }
     }
 
-    /*
     pub fn is_moving(&self) -> bool {
         let imp = self.imp.borrow();
         imp.cur != imp.end
     }
-    */
 
     pub fn cur(&self) -> T {
         self.imp.borrow().cur.clone()

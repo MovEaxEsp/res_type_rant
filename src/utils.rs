@@ -1,6 +1,5 @@
 use std::collections::HashSet;
 use std::rc::Rc;
-use js_sys::Reflect::get;
 use js_sys::Math;
 
 pub fn set_panic_hook() {
@@ -42,7 +41,6 @@ impl WordBank {
             }
             let mut line_iter = line.split(' ');
             let word = line_iter.next().unwrap();
-            let count:i32 = line_iter.next().expect(&format!("line: '{}'",line)).parse::<i32>().expect(line);
 
             if word.chars().nth(0).unwrap() == '\'' ||  // skip entries starting with apostrophe
             word.len() == 1 || // skip single character "words"
@@ -77,9 +75,7 @@ impl WordBank {
     }
 
     pub fn get_new_word(&self) -> Rc<String> {
-        //let mut rng = rand::thread_rng();
-
-        let mut idx: usize = 0;
+        let mut idx: usize;
         loop {
             idx = (Math::random() *(self.words.len() as f64)) as usize;
             //idx = rng.gen_range(0, self.words.len());

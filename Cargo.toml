@@ -15,8 +15,6 @@ default = ["console_error_panic_hook"]
 serde = { version = "1.0", features = ["derive"] }
 wasm-bindgen = { version = "0.2" }
 serde-wasm-bindgen = "0.4"
-#rand = { version = "0.5" }
-#getrandom = { version = "0.3", features = ["wasm_js"] }
 
 # The `console_error_panic_hook` crate provides better debugging of panics by
 # logging them with `console.error`. This is great for development, but requires
@@ -28,8 +26,8 @@ console_error_panic_hook = { version = "0.1.7", optional = true }
 wasm-bindgen-test = "0.3.34"
 
 [dependencies.web-sys]
-version = "0.3"
-features = ['CanvasRenderingContext2d', 'Document', 'Element', 'HtmlCanvasElement', 'HtmlImageElement', 'Window', 'Crypto']
+version = "0.3.77"
+features = ['CanvasRenderingContext2d', 'Document', 'Element', 'HtmlCanvasElement', 'HtmlImageElement', 'Window', 'Crypto', 'OffscreenCanvas', 'OffscreenCanvasRenderingContext2d', 'CanvasGradient']
 
 [dependencies.js-sys]
 version = "0.3.77"

@@ -5,8 +5,9 @@ mod interpolable;
 use interpolable::{Pos2d, Interpolable, InterpolableStore};
 
 use wasm_bindgen::prelude::*;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 use js_sys::JsString;
+use core::f64;
 use std::cell::RefCell;
 use std::collections::HashMap;
 use std::rc::Rc;
@@ -21,16 +22,21 @@ extern "C" {
 
 struct ImageProps {
     image: HtmlImageElement,
+    cooked_image: Option<Image>,
     width: f64,
     height: f64,
 }
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 enum Image {
+    Plate,
+    Pan,
     BurgerTop,
     BurgerBottom,
     LettuceLeaf,
     TomatoSlice,
+    RawPatty,
+    CookedPatty,
 }
 
 // An object that can be drawn
@@ -45,16 +51,19 @@ trait Entity {
 #[derive(Serialize, Deserialize)]
 struct GameConfig {
     word_level: i32,
+    draw_borders: bool,
 }
 
 ///////// GameState
 
 struct GameState {
-    canvas: CanvasRenderingContext2d,
+    screen_canvas: HtmlCanvasElement,
+    offscreen_canvas: OffscreenCanvas,
+    canvas: OffscreenCanvasRenderingContext2d,
     images: HashMap<Image, ImageProps>,
     order_bar: Rc<RefCell<OrderBar>>,
     ingredient_area: IngredientArea,
-    preparation_area: PreparationArea,
+    preparation_area: Rc<RefCell<PreparationArea>>,
     frame_start: Instant,  // time when previous frame started
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
     entered_text: String,
@@ -77,36 +86,78 @@ impl GameState {
         .expect("draw");
     }
 
+    fn draw_border(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
+        self.canvas.set_stroke_style_str("red");
+        self.canvas.begin_path();
+        self.canvas.rect(xpos, ypos,width, height);
+        self.canvas.close_path();
+        self.canvas.stroke();
+    }
+
+    fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
+        let middle_x = xpos + width/2.0;
+        let middle_y = (ypos + height/2.0) * 2.0;
+        let gradient = self.canvas.create_radial_gradient(middle_x, middle_y, 10.0, middle_x, middle_y, width/2.0).unwrap();
+        gradient.add_color_stop(0.0, "rgba(255, 255, 255, .5)").unwrap();
+        gradient.add_color_stop(1.0, "rgba(255,255,255,0)").unwrap();
+        self.canvas.set_fill_style_canvas_gradient(&gradient);
+        self.canvas.set_transform(1.0,0.0, 0.0, 0.5, 0.0, 0.0).unwrap();
+
+        self.canvas.begin_path();
+        self.canvas.ellipse(middle_x, middle_y, width/2.0, width/2.0, 0.0, 0.0, 2.0*f64::consts::PI).unwrap();
+        self.canvas.fill();
+        self.canvas.reset_transform().unwrap();
+    }
+
+    fn draw_command_text(&self, xpos: f64, ypos: f64, text: &String) {
+        self.canvas.set_stroke_style_str("yellow");
+
+        let mut font_size = 48;
+        if text.len() > 3 {
+            font_size -= (text.len() - 3) * 3;
+        }
+
+        self.canvas.set_font(&format!("{}px serif", font_size));
+        self.canvas.stroke_text(&text, xpos, ypos).expect("text");
+    }
+
     fn draw(&self) {
+
+        self.canvas.rect(0.0, 0.0, 2560.0, 1440.0);
+        self.canvas.set_fill_style_str("DimGrey");
+        self.canvas.fill();
+
+        //self.canvas.set_image_smoothing_enabled(false);
+
         self.order_bar.borrow().draw(self);
         self.ingredient_area.draw(self);
-        self.preparation_area.draw(self);
+        self.preparation_area.borrow().draw(self);
     
         // Draw current input
         self.canvas.set_fill_style_str("yellow");
         self.canvas.set_font("48px serif");
-        self.canvas.fill_text(&self.entered_text, 20.0, 600.0).expect("text");
+        self.canvas.fill_text(&self.entered_text, 20.0, 1300.0).expect("text");
+
+        let screen_context = self.screen_canvas
+                .get_context("2d").unwrap().unwrap()
+                .dyn_into::<CanvasRenderingContext2d>().unwrap();
+
+        //screen_context.set_image_smoothing_enabled(false);
+        screen_context.draw_image_with_offscreen_canvas_and_dw_and_dh(
+            &self.offscreen_canvas,
+            0.0, 0.0,
+            self.screen_canvas.width() as f64, self.screen_canvas.height() as f64)
+        .expect("draw offscreen canvas");
     }
 
     fn handle_command(&mut self) {
-        if  self.entered_text == "trash" {
-            self.preparation_area.plate.ingredients.clear();
-        }
-        else if self.entered_text == "send" {
-            let order_bar_rc= self.order_bar.clone();
 
-            let done_order = &mut self.preparation_area.plate;
-            let mut new_order = IngredientStack::new(done_order.pos.cur().xpos,
-                                                                      done_order.pos.cur().ypos); 
-            std::mem::swap(&mut new_order.ingredients, &mut done_order.ingredients);
-
-            self.order_bar.borrow_mut().try_submit_order(new_order,
-                                                         order_bar_rc);
-        }
-        else {
-            self.ingredient_area.find_ingredient(&self.entered_text,
-                                                 &mut self.preparation_area,
-                                                &self.words_bank);
+        let handled = self.ingredient_area.handle_command(
+            &self.entered_text,
+            &mut self.preparation_area.borrow_mut(),
+            &self.words_bank);
+        if !handled {
+            self.preparation_area.borrow_mut().handle_command(&self.entered_text, &self.order_bar, &self.words_bank);
         }
     }
 
@@ -151,6 +202,10 @@ impl Entity for OrderBar {
         for submitted in self.submitted_order.iter() {
             submitted.draw(state);
         }
+
+        if state.config.draw_borders {
+            state.draw_border(self.pos.xpos, self.pos.ypos, 600.0, IngredientStack::height());
+        }
     }
 }
 
@@ -177,7 +232,7 @@ impl OrderBar {
         ret
     }
 
-    fn try_submit_order(&mut self, order: IngredientStack, self_rc: Rc<RefCell<Self>>) {
+    fn try_submit_order(&mut self, order: IngredientStack, self_rc: Rc<RefCell<Self>>) -> bool{
         for i in 0..self.orders.len() {
             let bar_order = &self.orders[i];
             if order.ingredients.len() != bar_order.ingredients.len() {
@@ -209,8 +264,10 @@ impl OrderBar {
             }));
 
             self.submitted_order = Some(order);
-            break;
+            return true;
         }
+
+        return false;
     }
 
     fn serve_order(&mut self, order_idx: usize, self_rc: Rc<RefCell<Self>>) {
@@ -237,20 +294,34 @@ impl OrderBar {
 
     fn create_order(&mut self) {
 
-        type Order = Vec<Image>;
+        struct Ing {
+            image: Image,
+            chance: f64,
+        }
+
+        fn ing(image: Image, chance: f64) -> Ing {
+            Ing {
+                image: image,
+                chance: chance,
+            }
+        }
+
+        type Order = Vec<Ing>;
         let orders:Vec<Order> = vec![
-            vec![Image::BurgerBottom, Image::BurgerTop],
-            vec![Image::BurgerBottom, Image::LettuceLeaf, Image::BurgerTop],
-            vec![Image::BurgerBottom, Image::TomatoSlice, Image::BurgerTop],
-            vec![Image::BurgerBottom, Image::TomatoSlice, Image::LettuceLeaf, Image::BurgerTop],
+            vec![ing(Image::BurgerBottom, 1.0), ing(Image::CookedPatty, 1.0), ing(Image::LettuceLeaf, 0.5), ing(Image::TomatoSlice, 0.5), ing(Image::BurgerTop, 1.0)],
         ];
 
         let ord_idx = (js_sys::Math::random() * (orders.len() as f64)) as usize;
 
         let mut new_order = IngredientStack::new(self.pos.xpos + 1000.0, self.pos.ypos);
         for ing in orders[ord_idx].iter() {
+            let ing_chance = js_sys::Math::random();
+            if ing_chance > ing.chance {
+                continue;
+            }
+
             new_order.add_ingredient(
-                MovableIngredient::new(*ing, 0.0, 0.0, 800.0),
+                MovableIngredient::new(ing.image, 0.0, 0.0, 800.0),
                 &self.pos,
                 true);
         }
@@ -260,7 +331,7 @@ impl OrderBar {
 
         self.orders.push(new_order);
 
-        if self.orders.len() < 7 {
+        if self.orders.len() < 5 {
             self.new_item_timer.set_cur(0.0);
         }
     }
@@ -309,19 +380,20 @@ impl IngredientArea {
 
             state.draw_image(&self.ingredients[i], xpos, ypos);
 
-            // Draw the word
-            state.canvas.set_stroke_style_str("yellow");
-            state.canvas.set_font("48px serif");
-            state.canvas.stroke_text(&self.ingredient_words[i], xpos, ypos + 80.0).expect("text");
+            state.draw_command_text(xpos, ypos + 80.0, &self.ingredient_words[i]);
+        }
+
+        if state.config.draw_borders {
+            state.draw_border(self.pos.xpos, self.pos.ypos, (120*6) as f64, (80*3) as f64);
         }
     }
 
-    fn find_ingredient(&mut self, keyword: &String, prep:&mut PreparationArea, word_bank: &WordBank) {
+    fn handle_command(&mut self, keyword: &String, prep: &mut PreparationArea, word_bank: &WordBank) -> bool{
         for i in 0..self.ingredients.len() {
             let ing_word: &String = &self.ingredient_words[i];
             if ing_word == keyword {
                 self.ingredient_words[i] = word_bank.get_new_word();
-                prep.plate.add_ingredient(
+                prep.send_ingredient(
                     MovableIngredient::new(
                         self.ingredients[i],
                         120.0 * ((i%6) as f64),
@@ -329,13 +401,16 @@ impl IngredientArea {
                         500.0,
                     ),
                     &self.pos,
-                    false);
-                return;
+                    word_bank);
+                return true;
             }
         }
+
+        return false;
     }
 
 }
+
 
 struct MovableIngredient {
     image: Image,
@@ -376,6 +451,10 @@ impl IngredientStack {
         }
     }
 
+    fn height() -> f64 {
+        150.0
+    }
+
     fn collect_interpolables(&self, dest: &mut InterpolableStore) {
         dest.interpolables_2d.push(self.pos.clone());
         for item in self.ingredients.iter() {
@@ -392,7 +471,7 @@ impl IngredientStack {
     fn add_ingredient(&mut self, ingredient: MovableIngredient, cur_base_pos: &Pos2d, immediate: bool) {
         let end = Pos2d {
             xpos: 0.0,
-            ypos: 300.0 - (((self.ingredients.len()+1) as f64) *50.0)
+            ypos: IngredientStack::height() - (((self.ingredients.len()+1) as f64) *35.0)
         };
 
         let my_base = self.pos.cur();
@@ -413,28 +492,195 @@ impl IngredientStack {
     }
 }
 
-///////// PreparationArea
-struct PreparationArea {
-    //xpos: f64,
-    //ypos: f64,
-    plate: IngredientStack,
+///////// PreparationAreaStack
+struct PreparationAreaStack {
+    stack: IngredientStack,
+    base_image: Image,
+    is_selected: bool,
+    keyword: Rc<String>,
+    end_progress: Interpolable<f64>,
 }
 
-impl PreparationArea {
-    fn new(xpos: f64, ypos: f64) -> Self {
-        PreparationArea {
-            //xpos: xpos,
-            //ypos: ypos,
-            plate: IngredientStack::new(xpos+10.0, ypos+10.0),
+impl PreparationAreaStack {
+    fn new(xpos: f64, ypos: f64, base_image: &Image, keyword: Rc<String>) -> Self {
+        PreparationAreaStack {
+            stack: IngredientStack::new(xpos, ypos),
+            base_image: *base_image,
+            is_selected: false,
+            keyword: keyword,
+            end_progress: Interpolable::new(0.0, 0.2),
         }
     }
 
     fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        self.plate.collect_interpolables(dest);
+        self.stack.collect_interpolables(dest);
+
+        dest.interpolables_1d.push(self.end_progress.clone());
     }
 
     fn draw(&self, state: &GameState) {
+
+        let props = &state.images[&self.base_image];
+        if self.is_selected{
+            state.draw_halo(
+                self.stack.pos.cur().xpos,
+                self.stack.pos.cur().ypos + IngredientStack::height(),
+                props.width*1.2,
+                props.height*1.2);  
+        }
+        else {
+            state.draw_command_text(
+                self.stack.pos.cur().xpos,
+                self.stack.pos.cur().ypos + IngredientStack::height() + props.height + 50.0,
+                &self.keyword);
+        }
+        state.draw_image(
+            &self.base_image,
+            self.stack.pos.cur().xpos + 10.0,
+            self.stack.pos.cur().ypos + IngredientStack::height());
+
+        if self.end_progress.is_moving() {
+            // Draw the ingredients transitioning to their cooked versions, if they have one
+
+            // Make a temporary stack of the cooked versions of our ingredients
+            let cooked_stack = IngredientStack::new(self.stack.pos.cur().xpos, self.stack.pos.cur().ypos);
+            for ing in self.stack.ingredients.iter() {
+                let mut cooked_ing = ing.image;
+                if let Some(cooked_img) = &state.images[&ing.image].cooked_image {
+                    cooked_ing = *cooked_img;
+                }
+
+                cooked_stack.add_ingredient(cooked_ing, &Pos2d{xpos: 0.0, ypos: 0.0}, false);
+                todo finish here
+            }
+        }
+    }
+}
+
+///////// PreparationArea
+struct PreparationArea {
+    xpos: f64,
+    ypos: f64,
+    plate: PreparationAreaStack,
+    pan: PreparationAreaStack,
+}
+
+impl PreparationArea {
+    fn new(xpos: f64, ypos: f64, word_bank: &WordBank) -> Rc<RefCell<Self>> {
+
+        let mut ret = Rc::new(RefCell::new(PreparationArea {
+            xpos: xpos,
+            ypos: ypos,
+            plate: PreparationAreaStack::new(xpos+10.0, ypos+10.0, &Image::Plate, word_bank.get_new_word()),
+            pan: PreparationAreaStack::new(xpos + 180.0, ypos+10.0,&Image::Pan, word_bank.get_new_word()),
+        }));
+
+        ret.borrow_mut().plate.is_selected = true;
+
+        let cb_ref = ret.clone();
+        ret.borrow().pan.end_progress.set_moved_handler(Box::new(move || {
+            let cb_self = cb_ref.borrow_mut();
+            cb_self.handle_pan_done();
+        }));
+
+        ret
+    }
+
+    fn collect_interpolables(&self, dest: &mut InterpolableStore) {
+        self.plate.collect_interpolables(dest);
+        self.pan.collect_interpolables(dest);
+    }
+
+    fn handle_pan_done(&self) {
+        // Nothing for now?
+    }
+
+    fn send_ingredient(&mut self, ingredient: MovableIngredient, cur_base_pos: &Pos2d, word_bank: &WordBank) {
+        if self.plate.is_selected {
+
+            if ingredient.image != Image::RawPatty {
+                self.plate.stack.add_ingredient(ingredient, cur_base_pos, false);
+            }
+        }
+        else if self.pan.is_selected {
+            // Always go back to plate after sending something to pan
+            self.pan.keyword = word_bank.get_new_word();
+            self.pan.is_selected = false;
+            self.plate.is_selected = true;
+
+            if ingredient.image == Image::RawPatty {
+                self.pan.stack.add_ingredient(ingredient, cur_base_pos, false);
+                self.pan.end_progress.set_end(1.0);
+            }
+        }
+    }
+
+    fn handle_command(&mut self, command: &String, order_bar: &Rc<RefCell<OrderBar>>, word_bank: &WordBank) -> bool {
+        if  command == "trash" {
+            self.plate.stack.ingredients.clear();
+            return true;
+        }
+        
+        if command == "send" {
+            let order_bar_rc= order_bar.clone();
+
+            let done_order = &mut self.plate.stack;
+            let mut new_order = IngredientStack::new(done_order.pos.cur().xpos,
+                                                                      done_order.pos.cur().ypos); 
+            std::mem::swap(&mut new_order.ingredients, &mut done_order.ingredients);
+
+            order_bar.borrow_mut().try_submit_order(new_order,
+                                                    order_bar_rc);
+            return true;
+        }
+        
+        if !self.plate.is_selected {
+            if *self.plate.keyword == *command {
+                self.plate.is_selected = true;
+                self.plate.keyword = word_bank.get_new_word();
+                self.pan.is_selected = false;
+                return true;
+            }
+        }
+
+        if !self.pan.is_selected {
+            if *self.pan.keyword == *command {
+                self.pan.is_selected = true;
+                self.pan.keyword = word_bank.get_new_word();
+                self.plate.is_selected = false;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    fn draw(&self, state: &GameState) {
+
+        let plate_props = &state.images[&Image::Plate];
+        if let Some(word) = &self.plate_word {
+            state.draw_command_text(self.xpos, self.ypos + IngredientStack::height() + plate_props.height + 50.0,&word);
+        }
+        else {
+            state.draw_halo(self.xpos+10.0, self.ypos + IngredientStack::height(), plate_props.width*1.2, plate_props.height*1.2);
+        }
+        state.draw_image(&Image::Plate, self.xpos + 10.0, self.ypos + IngredientStack::height());
+
+        let pan_props = &state.images[&Image::Pan];
+        if let Some(word) = &self.pan_word {
+            state.draw_command_text(self.xpos + 190.0, self.ypos + IngredientStack::height() + pan_props.height + 50.0,&word);
+        }
+        else {
+            state.draw_halo(self.xpos+180.0, self.ypos + IngredientStack::height(), pan_props.width*1.2, pan_props.height*1.2);
+        }
+        state.draw_image(&Image::Pan, self.xpos + 180.0, self.ypos + IngredientStack::height());
+
         self.plate.draw(state);
+        self.pan.draw(state);
+
+        if state.config.draw_borders {
+            state.draw_border(self.xpos, self.ypos, 300.0, IngredientStack::height());
+        }
     }
 }
 
@@ -446,10 +692,14 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
     let mut image_map: HashMap<Image, HtmlImageElement> = HashMap::new();
 
     let image_names = HashMap::from([
+        (Image::Plate, "plate.png"),
+        (Image::Pan, "pan.png"),
         (Image::BurgerTop, "burger_top.png"),
         (Image::BurgerBottom, "burger_bottom.png"),
         (Image::LettuceLeaf, "lettuce_leaf.png"),
         (Image::TomatoSlice, "tomato_slice.png"),
+        (Image::RawPatty, "raw_patty.png"),
+        (Image::CookedPatty, "cooked_patty.png"),
     ]);
 
     for (imgtype, imgname) in image_names {
@@ -458,15 +708,19 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         image_map.insert(imgtype, htmlimg);
     }
 
-    let mut image_def = |image: Image, width: f64, height: f64| {
-        (image, ImageProps{image: image_map.remove(&image).unwrap(), width: width, height: height})
+    let mut image_def = |image: Image, width: f64, height: f64, cooked_image: Option<Image>| {
+        (image, ImageProps{image: image_map.remove(&image).unwrap(), width: width, height: height, cooked_image: cooked_image})
     };
 
     let state_images = HashMap::from([
-        image_def(Image::BurgerTop, 100.0, 30.0),
-        image_def(Image::BurgerBottom, 100.0, 30.0),
-        image_def(Image::LettuceLeaf, 100.0, 30.0),
-        image_def(Image::TomatoSlice, 100.0, 30.0),
+        image_def(Image::Plate, 100.0, 30.0, None),
+        image_def(Image::Pan, 200.0, 30.0, None),
+        image_def(Image::BurgerTop, 100.0, 30.0, None),
+        image_def(Image::BurgerBottom, 100.0, 30.0, None),
+        image_def(Image::LettuceLeaf, 100.0, 30.0, None),
+        image_def(Image::TomatoSlice, 100.0, 30.0, None),
+        image_def(Image::RawPatty, 100.0, 30.0, Some(Image::CookedPatty)),
+        image_def(Image::CookedPatty, 100.0, 30.0, None),
     ]);
 
     let order_bar = OrderBar::new(10.0, 20.0);
@@ -480,19 +734,27 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 
         
     let ingredient_area= IngredientArea::new(
-        vec![Image::BurgerTop, Image::BurgerBottom, Image::LettuceLeaf, Image::TomatoSlice],
-        60.0,
-        300.0,
+        vec![Image::BurgerBottom, Image::BurgerTop, Image::RawPatty, Image::LettuceLeaf, Image::TomatoSlice],
+        30.0,
+        900.0,
         &words_bank);
 
+    let offscreen_canvas = OffscreenCanvas::new(2560, 1440).expect("offscreen canvas");
+    let offscreen_context = offscreen_canvas.get_context("2d").unwrap().unwrap()
+                        .dyn_into::<OffscreenCanvasRenderingContext2d>().unwrap();
+
+    let screen_canvas= canvas.dyn_into::<HtmlCanvasElement>().expect("canvas");
+
+    let preparation_area = PreparationArea::new(30.0, 300.0, &words_bank);
+
     let state = GameState{
-        canvas: canvas.dyn_into::<HtmlCanvasElement>().expect("canvas")
-                .get_context("2d").unwrap().unwrap()
-                .dyn_into::<CanvasRenderingContext2d>().unwrap(),
+        screen_canvas: screen_canvas,
+        offscreen_canvas: offscreen_canvas,
+        canvas: offscreen_context,
         images: state_images,
         order_bar: order_bar,
         ingredient_area: ingredient_area,
-        preparation_area: PreparationArea::new(800.0, 300.0),
+        preparation_area: preparation_area,
         frame_start: Instant::now(),
         elapsed_time: 0.0,
         entered_text: String::new(),
@@ -513,10 +775,6 @@ fn run_frame_imp(state_rc: &Rc<RefCell<GameState>>) {
     state.elapsed_time = state.frame_start.elapsed().as_secs_f64();
     state.frame_start = Instant::now();
 
-    state.canvas.rect(0.0, 0.0, 1000.0, 700.0);
-    state.canvas.set_fill_style_str("black");
-    state.canvas.fill();
-
     // Let every entitity think
     //for i in 0..state.entities.len() {
     //    let entity = state.entities[i].as_ref();
@@ -528,7 +786,7 @@ fn run_frame_imp(state_rc: &Rc<RefCell<GameState>>) {
     {
         let order_bar = state.order_bar.borrow();
         order_bar.collect_interpolables(&mut interpolables);
-        state.preparation_area.collect_interpolables(&mut interpolables);
+        state.preparation_area.borrow().collect_interpolables(&mut interpolables);
     }
 
     interpolables.advance_all(state.elapsed_time);

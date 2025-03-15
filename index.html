@@ -4,6 +4,13 @@
 
 <head>
     <!--<script type="text/javascript" src="http://localhost:8000/pkg/res_type_rant.js" ></script>-->
+    <style>
+      div {
+        aspect-ratio: 16/9;
+        width: 80%;
+        background: teal;
+      }
+    </style>
 </head>
 
 <body>
@@ -50,7 +57,9 @@
         const images = {};
         
         const loadPromises = [];
-        ["burger_top.png",  "burger_bottom.png", "lettuce_leaf.png", "tomato_slice.png"]
+        ["burger_top.png",  "burger_bottom.png", "lettuce_leaf.png", "tomato_slice.png",
+          "plate.png", "pan.png", "raw_patty.png", "cooked_patty.png"
+        ]
         .forEach(name => {
           let img = new Image()
 
@@ -101,10 +110,18 @@
 
         let gameConfig = {
           word_level: 0,
+          draw_borders: false,
         }
 
+        let canvasDiv = document.getElementById("canvasHolder");
+        console.log(`Div width: ${canvasDiv.clientWidth}, height: ${canvasDiv.clientHeight}`);
+
+        let canvas = document.getElementById("canvas");
+        canvas.width = canvasDiv.clientWidth;
+        canvas.height = canvasDiv.clientHeight;
+
         //canvas = document.getElementById("myCanvas");
-        init_state(gameConfig, document.getElementById("canvas"), images, wordsDb, badWordsDb);
+        init_state(gameConfig, canvas, images, wordsDb, badWordsDb);
         //canvas.width = screen.width;
         //canvas.height = screen.height;
         //canvas.addEventListener('mousedown', handleMouseDown, false);
@@ -123,7 +140,10 @@
       run();
 </script>
 
-<canvas id="canvas" style="border: 1px solid black; position: absolute; top: 50px; left: 50px" height="768" width="1024"></canvas>
+<div id="canvasHolder">
+  <canvas id="canvas" style="border: 1px solid black;height:100%;width:100%"></canvas>
+</div>
 
+<!--<canvas id="canvas" style="border: 1px solid black" width="1920" height="1080"></canvas>-->
 </body>
 </html>
