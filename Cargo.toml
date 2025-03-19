@@ -1,9 +1,11 @@
 [package]
 name = "res_type_rant"
+description = "A typing game"
+repository = "github:MovEaxEsp/res_type_rant"
+license = "Idk"
 version = "0.1.0"
 authors = ["Pawel Grzech <pgrzech1@bloomberg.net>"]
 edition = "2018"
-wasm-opt = false
 
 [lib]
 crate-type = ["cdylib", "rlib"]

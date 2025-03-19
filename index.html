@@ -23,7 +23,7 @@
       // will "boot" the module and make it ready to use. Currently browsers
       // don't support natively imported WebAssembly as an ES module, but
       // eventually the manual initialization won't be required!
-      import init, { run_frame, report_keypress, init_state } from './pkg/res_type_rant.js';
+      import init, { run_frame, report_keypress, init_state, default_config, update_config } from './pkg/res_type_rant.js';
 
       async function run() {
         // First up we need to actually load the Wasm file, so we use the
@@ -103,15 +103,33 @@
 
         await Promise.all(loadPromises);
 
+        let editingConfig = false;
+
         window.addEventListener("keydown", event => {
-          report_keypress(event.key);
-          event.preventDefault();
+          if (!editingConfig) {
+            report_keypress(event.key);
+            event.preventDefault();
+          }
         }, true)
 
-        let gameConfig = {
+
+        let gameConfig = {...default_config(), ...{
           word_level: 0,
           draw_borders: false,
-        }
+        }};
+
+        let cfgInput = document.getElementById("config");
+        cfgInput.value = JSON.stringify(gameConfig, null, 2);
+        cfgInput.addEventListener("change", event => {
+          let newCfg = JSON.parse(cfgInput.value);
+          update_config(newCfg);
+        });
+        cfgInput.addEventListener("focus", event => {
+          editingConfig = true;
+        });
+        cfgInput.addEventListener("blur", event => {
+          editingConfig = false;
+        });
 
         let canvasDiv = document.getElementById("canvasHolder");
         console.log(`Div width: ${canvasDiv.clientWidth}, height: ${canvasDiv.clientHeight}`);
@@ -143,6 +161,8 @@
 <div id="canvasHolder">
   <canvas id="canvas" style="border: 1px solid black;height:100%;width:100%"></canvas>
 </div>
+
+<textarea id="config" rows="20" cols="80"> </textarea>
 
 <!--<canvas id="canvas" style="border: 1px solid black" width="1920" height="1080"></canvas>-->
 </body>

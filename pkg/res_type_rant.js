@@ -190,6 +190,21 @@ export function report_keypress(key) {
     wasm.report_keypress(ptr0, len0);
 }
 
+/**
+ * @returns {any}
+ */
+export function default_config() {
+    const ret = wasm.default_config();
+    return ret;
+}
+
+/**
+ * @param {any} config
+ */
+export function update_config(config) {
+    wasm.update_config(config);
+}
+
 async function __wbg_load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
         if (typeof WebAssembly.instantiateStreaming === 'function') {
@@ -366,6 +381,10 @@ function __wbg_get_imports() {
         const ret = new OffscreenCanvas(arg0 >>> 0, arg1 >>> 0);
         return ret;
     }, arguments) };
+    imports.wbg.__wbg_new_405e22f390576ce2 = function() {
+        const ret = new Object();
+        return ret;
+    };
     imports.wbg.__wbg_new_8a6f238a6ece86ea = function() {
         const ret = new Error();
         return ret;
@@ -396,9 +415,15 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_resetTransform_a0e0719cf160d5a2 = function() { return handleError(function (arg0) {
         arg0.resetTransform();
     }, arguments) };
+    imports.wbg.__wbg_roundRect_a58455b780e2ee31 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
+        arg0.roundRect(arg1, arg2, arg3, arg4, arg5);
+    }, arguments) };
     imports.wbg.__wbg_setTransform_da2f0baec3f09522 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
         arg0.setTransform(arg1, arg2, arg3, arg4, arg5, arg6);
     }, arguments) };
+    imports.wbg.__wbg_set_3fda3bac07393de4 = function(arg0, arg1, arg2) {
+        arg0[arg1] = arg2;
+    };
     imports.wbg.__wbg_set_65595bdd868b3009 = function(arg0, arg1, arg2) {
         arg0.set(arg1, arg2 >>> 0);
     };
@@ -410,6 +435,12 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_setfont_4c3584ef2f5c9f7e = function(arg0, arg1, arg2) {
         arg0.font = getStringFromWasm0(arg1, arg2);
+    };
+    imports.wbg.__wbg_setglobalAlpha_3018cc44e3ab2d57 = function(arg0, arg1) {
+        arg0.globalAlpha = arg1;
+    };
+    imports.wbg.__wbg_setlineWidth_3c8b7156949a9f4b = function(arg0, arg1) {
+        arg0.lineWidth = arg1;
     };
     imports.wbg.__wbg_setstrokeStyle_070920f27992b9a6 = function(arg0, arg1, arg2) {
         arg0.strokeStyle = getStringFromWasm0(arg1, arg2);
@@ -447,6 +478,16 @@ function __wbg_get_imports() {
         const ret = arg0.width;
         return ret;
     };
+    imports.wbg.__wbindgen_bigint_from_u64 = function(arg0) {
+        const ret = BigInt.asUintN(64, arg0);
+        return ret;
+    };
+    imports.wbg.__wbindgen_bigint_get_as_i64 = function(arg0, arg1) {
+        const v = arg1;
+        const ret = typeof(v) === 'bigint' ? v : undefined;
+        getDataViewMemory0().setBigInt64(arg0 + 8 * 1, isLikeNone(ret) ? BigInt(0) : ret, true);
+        getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
+    };
     imports.wbg.__wbindgen_boolean_get = function(arg0) {
         const v = arg0;
         const ret = typeof(v) === 'boolean' ? (v ? 1 : 0) : 2;
@@ -477,6 +518,10 @@ function __wbg_get_imports() {
         table.set(offset + 3, false);
         ;
     };
+    imports.wbg.__wbindgen_is_bigint = function(arg0) {
+        const ret = typeof(arg0) === 'bigint';
+        return ret;
+    };
     imports.wbg.__wbindgen_is_object = function(arg0) {
         const val = arg0;
         const ret = typeof(val) === 'object' && val !== null;
@@ -488,6 +533,10 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbindgen_is_undefined = function(arg0) {
         const ret = arg0 === undefined;
+        return ret;
+    };
+    imports.wbg.__wbindgen_jsval_eq = function(arg0, arg1) {
+        const ret = arg0 === arg1;
         return ret;
     };
     imports.wbg.__wbindgen_jsval_loose_eq = function(arg0, arg1) {
@@ -503,6 +552,10 @@ function __wbg_get_imports() {
         const ret = typeof(obj) === 'number' ? obj : undefined;
         getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
+    };
+    imports.wbg.__wbindgen_number_new = function(arg0) {
+        const ret = arg0;
+        return ret;
     };
     imports.wbg.__wbindgen_string_get = function(arg0, arg1) {
         const obj = arg1;

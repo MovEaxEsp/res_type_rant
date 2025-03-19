@@ -7,10 +7,10 @@ mod traits;
 mod utils;
 
 use ingredient_area::IngredientArea;
-use interpolable::InterpolableStore;
+use interpolable::{InterpolableStore, Pos2d};
 use order_bar::OrderBar;
 use preparation_area::PreparationArea;
-use traits::{Image, ImageProps, BaseGame, GameConfig};
+use traits::{BackgroundConfig, BaseGame, GameConfig, Image, ImageProps, IngredientAreaConfig, OrderBarConfig, PreparationAreaConfig, PreparationAreaStackConfig, TextConfig};
 use utils::{set_panic_hook, WordBank};
 
 use wasm_bindgen::prelude::*;
@@ -36,7 +36,7 @@ struct GameState {
     canvas: OffscreenCanvasRenderingContext2d,
     images: HashMap<Image, ImageProps>,
     order_bar: Rc<RefCell<OrderBar>>,
-    ingredient_area: IngredientArea,
+    ingredient_area: Rc<RefCell<IngredientArea>>,
     preparation_area: Rc<RefCell<PreparationArea>>,
     frame_start: Instant,  // time when previous frame started
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
@@ -46,14 +46,18 @@ struct GameState {
 }
 
 impl BaseGame for GameState {
-    fn draw_image(&self, image: &Image, xpos: f64, ypos: f64) {
+    fn set_global_alpha(&self, alpha: f64) {
+        self.canvas.set_global_alpha(alpha);
+    }
+
+    fn draw_image(&self, image: &Image, pos: &Pos2d) {
 
         let props = self.images.get(image).unwrap();
 
         self.canvas.draw_image_with_html_image_element_and_dw_and_dh(
             &props.image,
-            xpos,
-            ypos,
+            pos.xpos,
+            pos.ypos,
             props.width,
             props.height,
         )
@@ -66,6 +70,38 @@ impl BaseGame for GameState {
         self.canvas.rect(xpos, ypos,width, height);
         self.canvas.close_path();
         self.canvas.stroke();
+    }
+
+    fn draw_area_background(&self, pos: &Pos2d, cfg: &BackgroundConfig) {
+        let c = &self.canvas;
+
+        c.set_stroke_style_str(&cfg.border_style);
+        c.set_fill_style_str(&cfg.bg_style);
+        c.set_line_width(cfg.border_width);
+
+        // Draw backgound first
+        c.set_global_alpha(cfg.bg_alpha);
+        c.begin_path();
+        c.round_rect_with_f64(
+            pos.xpos + cfg.x_off,
+            pos.ypos + cfg.y_off,
+            cfg.width,
+            cfg.height,
+            cfg.corner_radius).expect("bg");
+        c.fill();
+
+        // Draw border
+        c.set_global_alpha(cfg.border_alpha);
+        c.begin_path();
+        c.round_rect_with_f64(
+            pos.xpos + cfg.x_off,
+            pos.ypos + cfg.y_off,
+            cfg.width,
+            cfg.height,
+            cfg.corner_radius).expect("border");
+        c.stroke();
+
+        c.set_global_alpha(1.0);
     }
 
     fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
@@ -83,16 +119,27 @@ impl BaseGame for GameState {
         self.canvas.reset_transform().unwrap();
     }
 
-    fn draw_command_text(&self, xpos: f64, ypos: f64, text: &String) {
-        self.canvas.set_stroke_style_str("yellow");
-
-        let mut font_size = 48;
+    fn draw_text(&self, text: &String, pos: &Pos2d, cfg: &TextConfig) {
+        let mut font_size: usize = cfg.size as usize;
         if text.len() > 3 {
             font_size -= (text.len() - 3) * 3;
         }
 
-        self.canvas.set_font(&format!("{}px serif", font_size));
-        self.canvas.stroke_text(&text, xpos, ypos).expect("text");
+        self.canvas.set_font(&format!("{}px {}", font_size, cfg.font));
+        self.canvas.set_global_alpha(cfg.alpha);
+
+        let draw_pos = *pos + Pos2d::new(cfg.x_off, cfg.y_off);
+
+        if cfg.stroke {
+            self.canvas.set_stroke_style_str(&cfg.style);
+            self.canvas.stroke_text(&text, draw_pos.xpos, draw_pos.ypos).expect("text");
+        }
+        else {
+            self.canvas.set_fill_style_str(&cfg.style);
+            self.canvas.fill_text(&text, draw_pos.xpos, draw_pos.ypos).expect("text");
+        }
+    
+        self.canvas.set_global_alpha(1.0);
     }
 
     fn config<'a>(&'a self) -> &'a GameConfig {
@@ -114,7 +161,7 @@ impl GameState {
         //self.canvas.set_image_smoothing_enabled(false);
 
         self.order_bar.borrow().draw(self);
-        self.ingredient_area.draw(self);
+        self.ingredient_area.borrow().draw(self);
         self.preparation_area.borrow().draw(self);
     
         // Draw current input
@@ -135,13 +182,13 @@ impl GameState {
     }
 
     fn handle_command(&mut self) {
-
-        let handled = self.ingredient_area.handle_command(
+        let handled = self.ingredient_area.borrow_mut().handle_command(
             &self.entered_text,
             &mut self.preparation_area.borrow_mut(),
-            &self.words_bank);
+            &self.words_bank,
+            self);
         if !handled {
-            self.preparation_area.borrow_mut().handle_command(&self.entered_text, &self.order_bar, &self.words_bank);
+            self.preparation_area.borrow_mut().handle_command(&self.entered_text, &self.order_bar, &self.words_bank, self);
         }
     }
 
@@ -162,6 +209,13 @@ impl GameState {
             log(&format!("Unhandled key: {}", key));
         }
     }
+
+    fn update_config(&mut self, cfg: &GameConfig) {
+        self.order_bar.borrow_mut().update_config(&cfg.order_bar);
+        self.ingredient_area.borrow_mut().update_config(&cfg.ingredient_area);
+        self.preparation_area.borrow_mut().update_config(&cfg.preparation_area);
+    }
+
 }
 
 static mut S_STATE: Option<Rc<RefCell<GameState>>> = None;
@@ -170,6 +224,8 @@ static mut S_STATE: Option<Rc<RefCell<GameState>>> = None;
 pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: JsValue, bad_words_db: JsValue) {
 
     set_panic_hook();
+    
+    let game_config: GameConfig = serde_wasm_bindgen::from_value(config).unwrap();
 
     let mut image_map: HashMap<Image, HtmlImageElement> = HashMap::new();
 
@@ -205,9 +261,7 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         image_def(Image::CookedPatty, 100.0, 30.0, None),
     ]);
 
-    let order_bar = OrderBar::new(10.0, 20.0);
-
-    let game_config: GameConfig = serde_wasm_bindgen::from_value(config).unwrap();
+    let order_bar = OrderBar::new(&game_config.order_bar);
 
     let words_bank = WordBank::new(
         &words_db.dyn_into::<JsString>().expect("wordsDb").into(),
@@ -217,9 +271,8 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         
     let ingredient_area= IngredientArea::new(
         vec![Image::BurgerBottom, Image::BurgerTop, Image::RawPatty, Image::LettuceLeaf, Image::TomatoSlice],
-        30.0,
-        900.0,
-        &words_bank);
+        &words_bank,
+        &game_config.ingredient_area);
 
     let offscreen_canvas = OffscreenCanvas::new(2560, 1440).expect("offscreen canvas");
     let offscreen_context = offscreen_canvas.get_context("2d").unwrap().unwrap()
@@ -227,7 +280,7 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 
     let screen_canvas= canvas.dyn_into::<HtmlCanvasElement>().expect("canvas");
 
-    let preparation_area = PreparationArea::new(30.0, 300.0, &words_bank);
+    let preparation_area = PreparationArea::new(&words_bank, &game_config.preparation_area);
 
     let state = GameState{
         screen_canvas: screen_canvas,
@@ -235,8 +288,8 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         canvas: offscreen_context,
         images: state_images,
         order_bar: order_bar,
-        ingredient_area: ingredient_area,
-        preparation_area: preparation_area,
+        ingredient_area: Rc::new(RefCell::new(ingredient_area)),
+        preparation_area: Rc::new(RefCell::new(preparation_area)),
         frame_start: Instant::now(),
         elapsed_time: 0.0,
         entered_text: String::new(),
@@ -268,6 +321,7 @@ fn run_frame_imp(state_rc: &Rc<RefCell<GameState>>) {
     {
         let order_bar = state.order_bar.borrow();
         order_bar.collect_interpolables(&mut interpolables);
+        state.ingredient_area.borrow().collect_interpolables(&mut interpolables);
         state.preparation_area.borrow().collect_interpolables(&mut interpolables);
     }
 
@@ -293,4 +347,107 @@ pub fn report_keypress(key: &str) {
         let state: &Rc<RefCell<GameState>> = S_STATE.as_mut().unwrap();
         state.borrow_mut().handle_key(key, state);
     }
+}
+
+#[wasm_bindgen]
+pub fn default_config() -> JsValue {
+    let cfg = GameConfig {
+        word_level: 0,
+        draw_borders: false,
+        order_bar: OrderBarConfig {
+            xpos: 1700.0,
+            ypos: 100.0,
+            bg: BackgroundConfig {
+                x_off: -50.0,
+                y_off: -70.0,
+                width: 740.0,
+                height: 250.0,
+                corner_radius: 30.0,
+                border_style: "black".to_string(),
+                border_alpha: 1.0,
+                border_width: 5.0,
+                bg_style: "pink".to_string(),
+                bg_alpha: 0.2
+            }
+        },
+        ingredient_area: IngredientAreaConfig {
+            xpos: 80.0,
+            ypos: 800.0,
+            grid_width: 5,
+            grid_item_width: 170.0,
+            grid_item_height: 80.0,
+            bg: BackgroundConfig {
+                x_off: -50.0,
+                y_off: -70.0,
+                width: 900.0,
+                height: 500.0,
+                corner_radius: 30.0,
+                border_style: "black".to_string(),
+                border_alpha: 0.3,
+                border_width: 5.0,
+                bg_style: "orange".to_string(),
+                bg_alpha: 0.2
+            },
+            text: TextConfig {
+                x_off: 0.0,
+                y_off: 80.0,
+                stroke: false,
+                style: "yellow".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                alpha: 0.4
+            }
+        },
+        preparation_area: PreparationAreaConfig {
+            xpos: 1500.0,
+            ypos: 500.0,
+            plate: PreparationAreaStackConfig {
+                xpos: 10.0,
+                ypos: 50.0,
+                base_x_off: 0.0,
+                base_y_off: 150.0,
+                cook_time: 0.0,
+            },
+            pan: PreparationAreaStackConfig {
+                xpos: 200.0,
+                ypos: 50.0,
+                base_x_off: -10.0,
+                base_y_off: 150.0,
+                cook_time: 3.0,
+            },
+            bg: BackgroundConfig {
+                x_off: -50.0,
+                y_off: -70.0,
+                width: 900.0,
+                height: 500.0,
+                corner_radius: 30.0,
+                border_style: "black".to_string(),
+                border_alpha: 0.3,
+                border_width: 5.0,
+                bg_style: "orange".to_string(),
+                bg_alpha: 0.2
+            },
+            text: TextConfig {
+                x_off: 0.0,
+                y_off: 220.0,
+                stroke: false,
+                style: "yellow".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                alpha: 0.4
+            }
+        }
+    };
+
+    serde_wasm_bindgen::to_value(&cfg).unwrap()
+}
+
+#[wasm_bindgen]
+pub fn update_config(config: JsValue) {
+    unsafe {
+        #[allow(static_mut_refs)]
+        let state: &Rc<RefCell<GameState>> = S_STATE.as_mut().unwrap();
+        state.borrow_mut().update_config(&serde_wasm_bindgen::from_value(config).unwrap());
+    }
+    
 }
