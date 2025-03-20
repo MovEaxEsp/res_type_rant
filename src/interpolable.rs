@@ -98,7 +98,7 @@ struct InterpolableImp<T> {
     end: T,
     speed: f64, // units per second
     base: Option<Rc<RefCell<InterpolableImp<T>>>>,
-    moved_handler: RefCell<Box<dyn FnMut()>>,
+    moved_handler: Rc<RefCell<Box<dyn FnMut()>>>,
 }
 
 impl<T> InterpolableImp<T>
@@ -109,7 +109,7 @@ where T: Clone + Copy + std::ops::Add<Output = T> + std::ops::Sub<Output = T> {
             end: val,
             speed: speed,
             base: None,
-            moved_handler: RefCell::new(Box::new(|| {})),
+            moved_handler: Rc::new(RefCell::new(Box::new(|| {}))),
         }
     }
 
@@ -195,30 +195,18 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
     }
     */
 
-    pub fn advance(&self, elapsed_time:f64) {
-        let mut done_cb: Box<dyn FnMut()> = Box::new(||{});
-        let mut have_done_cb = false;
-
-        {
-            let mut imp = self.imp.borrow_mut();
-            if imp.cur != imp.end {
-                let end = imp.end.clone();
-                let speed = imp.speed;
-                imp.cur.advance(end, speed, elapsed_time);
-                if imp.cur == imp.end {
-                    done_cb = imp.moved_handler.replace(done_cb);
-                    have_done_cb = true;
-                }
+    pub fn advance(&self, elapsed_time:f64) -> Option<Rc<RefCell<Box<dyn FnMut()>>>> {
+        let imp = &mut self.imp.borrow_mut();
+        if imp.cur != imp.end {
+            let end = imp.end.clone();
+            let speed = imp.speed;
+            imp.cur.advance(end, speed, elapsed_time);
+            if imp.cur == imp.end {
+                return Some(imp.moved_handler.clone());
             }
         }
 
-        if have_done_cb {
-            done_cb();
-
-            let imp = self.imp.borrow_mut();
-            #[allow(unused_must_use)]
-            imp.moved_handler.replace(done_cb);
-        }
+        None
     }
 
     pub fn set_cur(&self, cur: T) {
@@ -229,12 +217,14 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
         self.imp.borrow_mut().end = end;
     }
 
+    /*
     pub fn set_speed(&self, speed: f64) {
         self.imp.borrow_mut().speed = speed;
     }
+    */
 
     pub fn set_moved_handler(&self, handler: Box<dyn FnMut()>) {
-        self.imp.borrow_mut().moved_handler = RefCell::new(handler);
+        self.imp.borrow_mut().moved_handler = Rc::new(RefCell::new(handler));
     }
 }
 
@@ -262,11 +252,21 @@ impl InterpolableStore {
     }
 
     pub fn advance_all(&self, elapsed_time: f64) {
+        let mut done_cbs: Vec<Rc<RefCell<Box<dyn FnMut()>>>> = Vec::new();
+
         for intr in self.interpolables_1d.iter() {
-            intr.advance(elapsed_time);
+            if let Some(cb) = intr.advance(elapsed_time) {
+                done_cbs.push(cb);
+            }
         }
         for intr in self.interpolables_2d.iter() {
-            intr.advance(elapsed_time);
+            if let Some(cb) = intr.advance(elapsed_time) {
+                done_cbs.push(cb);
+            }
+        }
+
+        for cb in done_cbs {
+            cb.borrow_mut()();
         }
     }
 }

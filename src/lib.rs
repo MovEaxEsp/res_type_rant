@@ -10,7 +10,8 @@ use ingredient_area::IngredientArea;
 use interpolable::{InterpolableStore, Pos2d};
 use order_bar::OrderBar;
 use preparation_area::PreparationArea;
-use traits::{BackgroundConfig, BaseGame, GameConfig, Image, ImageProps, IngredientAreaConfig, OrderBarConfig, PreparationAreaConfig, PreparationAreaStackConfig, TextConfig};
+use traits::{BackgroundConfig, BaseGame, GameConfig, Image, ImageProps, IngredientAreaConfig, OrderBarConfig, PreparationAreaConfig,
+             PreparationAreaStackConfig, TextConfig, ProgressBarConfig};
 use utils::{set_panic_hook, WordBank};
 
 use wasm_bindgen::prelude::*;
@@ -102,6 +103,24 @@ impl BaseGame for GameState {
         c.stroke();
 
         c.set_global_alpha(1.0);
+    }
+
+    fn draw_progress_bar(&self, pos: &Pos2d, pct: f64, cfg: &ProgressBarConfig) {
+        self.draw_area_background(pos, &cfg.bg);
+
+        // Draw the progress indicator
+        self.canvas.set_global_alpha(cfg.done_alpha);
+        self.canvas.set_fill_style_str(&cfg.done_style);
+        self.canvas.begin_path();
+        self.canvas.round_rect_with_f64(
+            pos.xpos + cfg.bg.x_off,
+            pos.ypos + cfg.bg.y_off,
+            cfg.bg.width * pct,
+            cfg.bg.height,
+            cfg.bg.corner_radius).expect("progress");
+        self.canvas.fill();
+
+        self.canvas.set_global_alpha(1.0);
     }
 
     fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
@@ -368,6 +387,31 @@ pub fn default_config() -> JsValue {
                 border_width: 5.0,
                 bg_style: "pink".to_string(),
                 bg_alpha: 0.2
+            },
+            text: TextConfig {
+                x_off: 0.0,
+                y_off: 80.0,
+                stroke: false,
+                style: "yellow".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                alpha: 0.4
+            },
+            progress_bar: ProgressBarConfig {
+                bg: BackgroundConfig {
+                    x_off: 0.0,
+                    y_off: 200.0,
+                    width: 100.0,
+                    height: 30.0,
+                    corner_radius: 30.0,
+                    border_style: "black".to_string(),
+                    border_alpha: 1.0,
+                    border_width: 5.0,
+                    bg_style: "pink".to_string(),
+                    bg_alpha: 0.2
+                },
+                done_alpha: 1.0,
+                done_style: "red".to_string(),
             }
         },
         ingredient_area: IngredientAreaConfig {

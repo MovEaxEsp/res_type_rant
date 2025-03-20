@@ -92,17 +92,18 @@ impl PreparationAreaStack {
                 cooked_stack.add_ingredient(cooked_ing, true);
             }
 
+            // TODO rewrite PreparationAreaStack using the text/progress of IngStack
             // Draw each stack, so the total alpha = 1
             game.set_global_alpha(1.0 - self.end_progress.cur());
-            self.stack.draw(game);
+            self.stack.draw_stack(game);
 
             game.set_global_alpha(self.end_progress.cur());
-            cooked_stack.draw(game);
+            cooked_stack.draw_stack(game);
 
             game.set_global_alpha(1.0);
         }
         else {
-            self.stack.draw(game);
+            self.stack.draw_stack(game);
         }
     }
 
@@ -139,6 +140,7 @@ impl PreparationAreaStack {
         self.cooked_stack = None;
     }
 }
+
 pub struct PreparationArea {
     pos: Interpolable<Pos2d>,
     plate: Rc<RefCell<PreparationAreaStack>>,

@@ -1,5 +1,5 @@
 
-use crate::traits::{Image, BaseGame};
+use crate::traits::{BaseGame, Image, ProgressBarConfig, TextConfig};
 use crate::interpolable::{Interpolable, Pos2d, InterpolableStore};
 
 use wasm_bindgen::prelude::*;
@@ -36,6 +36,8 @@ impl MovableIngredient {
 pub struct IngredientStack {
     pub ingredients: Vec<MovableIngredient>,
     pub pos: Interpolable<Pos2d>,
+    pub text: Option<String>,
+    pub progress: Option<Interpolable<f64>>,
 }
 
 impl IngredientStack {
@@ -43,6 +45,8 @@ impl IngredientStack {
         IngredientStack {
             ingredients: Vec::new(),
             pos: pos,
+            text: None,
+            progress: None,
         }
     }
 
@@ -55,12 +59,36 @@ impl IngredientStack {
         for item in self.ingredients.iter() {
             item.collect_interpolables(dest);
         }
+
+        if let Some(progress) = &self.progress {
+            dest.interpolables_1d.push(progress.clone());
+        }
     }
 
-    pub fn draw(&self, state: &dyn BaseGame) {
+    pub fn draw_stack(&self, game: &dyn BaseGame) {
         for item in self.ingredients.iter() {
-            item.draw(state);
+            item.draw(game);
         }
+    }
+
+    pub fn draw_text(&self, game: &dyn BaseGame, cfg: &TextConfig) {
+        if let Some(text) = &self.text {
+            game.draw_text(&text, &self.pos.cur(), cfg);
+        }
+    }
+
+    pub fn draw_progress(&self, game: &dyn BaseGame, cfg: &ProgressBarConfig) {
+        if let Some(progress) = &self.progress {
+            if progress.is_moving() {
+                game.draw_progress_bar(&self.pos.cur(), progress.cur(), cfg);
+            }
+        }
+    }
+
+    pub fn draw(&self, game: &dyn BaseGame, text_cfg: &TextConfig, progress_cfg: &ProgressBarConfig) {
+        self.draw_stack(game);
+        self.draw_text(game, text_cfg);
+        self.draw_progress(game, progress_cfg);
     }
 
     pub fn add_ingredient(&mut self, mut ingredient: MovableIngredient, immediate: bool) {

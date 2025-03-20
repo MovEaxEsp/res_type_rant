@@ -49,10 +49,19 @@ pub struct TextConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct ProgressBarConfig {
+    pub bg: BackgroundConfig,
+    pub done_style: String,
+    pub done_alpha: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct OrderBarConfig {
     pub xpos: f64,
     pub ypos: f64,
     pub bg: BackgroundConfig,
+    pub text: TextConfig,
+    pub progress_bar: ProgressBarConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -102,6 +111,8 @@ pub trait BaseGame {
     fn draw_border(&self, xpos: f64, ypos: f64, width: f64, height: f64);
 
     fn draw_area_background(&self, pos: &Pos2d, cfg: &BackgroundConfig);
+
+    fn draw_progress_bar(&self, pos: &Pos2d, pct: f64, cfg: &ProgressBarConfig);
 
     fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64);
 
