@@ -3,6 +3,8 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
+use crate::traits::BaseGame;
+
 pub trait Advanceable<T> {
     fn advance(&mut self, end: T, speed: f64, elapsed_time: f64);
 }
@@ -98,7 +100,7 @@ struct InterpolableImp<T> {
     end: T,
     speed: f64, // units per second
     base: Option<Rc<RefCell<InterpolableImp<T>>>>,
-    moved_handler: Rc<RefCell<Box<dyn FnMut()>>>,
+    moved_handler: Rc<RefCell<Box<dyn FnMut(&dyn BaseGame)>>>,
 }
 
 impl<T> InterpolableImp<T>
@@ -109,7 +111,7 @@ where T: Clone + Copy + std::ops::Add<Output = T> + std::ops::Sub<Output = T> {
             end: val,
             speed: speed,
             base: None,
-            moved_handler: Rc::new(RefCell::new(Box::new(|| {}))),
+            moved_handler: Rc::new(RefCell::new(Box::new(|_: &dyn BaseGame| {}))),
         }
     }
 
@@ -195,7 +197,7 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
     }
     */
 
-    pub fn advance(&self, elapsed_time:f64) -> Option<Rc<RefCell<Box<dyn FnMut()>>>> {
+    pub fn advance(&self, elapsed_time:f64) -> Option<Rc<RefCell<Box<dyn FnMut(&dyn BaseGame)>>>> {
         let imp = &mut self.imp.borrow_mut();
         if imp.cur != imp.end {
             let end = imp.end.clone();
@@ -223,7 +225,7 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
     }
     */
 
-    pub fn set_moved_handler(&self, handler: Box<dyn FnMut()>) {
+    pub fn set_moved_handler(&self, handler: Box<dyn FnMut(&dyn BaseGame)>) {
         self.imp.borrow_mut().moved_handler = Rc::new(RefCell::new(handler));
     }
 }
@@ -251,8 +253,8 @@ impl InterpolableStore {
         }
     }
 
-    pub fn advance_all(&self, elapsed_time: f64) {
-        let mut done_cbs: Vec<Rc<RefCell<Box<dyn FnMut()>>>> = Vec::new();
+    pub fn advance_all(&self, elapsed_time: f64, game: &dyn BaseGame) {
+        let mut done_cbs: Vec<Rc<RefCell<Box<dyn FnMut(&dyn BaseGame)>>>> = Vec::new();
 
         for intr in self.interpolables_1d.iter() {
             if let Some(cb) = intr.advance(elapsed_time) {
@@ -266,7 +268,7 @@ impl InterpolableStore {
         }
 
         for cb in done_cbs {
-            cb.borrow_mut()();
+            cb.borrow_mut()(game);
         }
     }
 }

@@ -45,6 +45,7 @@ pub struct TextConfig {
     pub style: String,
     pub font: String,
     pub size: i32,
+    pub scale_text: bool,
     pub alpha: f64,
 }
 
@@ -59,8 +60,10 @@ pub struct ProgressBarConfig {
 pub struct OrderBarConfig {
     pub xpos: f64,
     pub ypos: f64,
+    pub depreciation_seconds: f64,
     pub bg: BackgroundConfig,
-    pub text: TextConfig,
+    pub text_price: TextConfig,
+    pub text_remaining: TextConfig,
     pub progress_bar: ProgressBarConfig,
 }
 
@@ -95,12 +98,21 @@ pub struct PreparationAreaConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct MoneyConfig {
+    pub xpos: f64,
+    pub ypos: f64,
+    pub bg: BackgroundConfig,
+    pub text: TextConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct GameConfig {
     pub word_level: i32,
     pub draw_borders: bool,
     pub order_bar: OrderBarConfig,
     pub ingredient_area: IngredientAreaConfig,
     pub preparation_area: PreparationAreaConfig,
+    pub money: MoneyConfig,
 }
 
 pub trait BaseGame {
@@ -117,6 +129,8 @@ pub trait BaseGame {
     fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64);
 
     fn draw_text(&self, text: &String, pos: &Pos2d, cfg: &TextConfig);
+
+    fn add_money(&self, amt: i32);
 
     fn config<'a>(&'a self) ->  &'a GameConfig;
 

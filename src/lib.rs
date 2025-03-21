@@ -11,7 +11,7 @@ use interpolable::{InterpolableStore, Pos2d};
 use order_bar::OrderBar;
 use preparation_area::PreparationArea;
 use traits::{BackgroundConfig, BaseGame, GameConfig, Image, ImageProps, IngredientAreaConfig, OrderBarConfig, PreparationAreaConfig,
-             PreparationAreaStackConfig, TextConfig, ProgressBarConfig};
+             PreparationAreaStackConfig, TextConfig, ProgressBarConfig, MoneyConfig};
 use utils::{set_panic_hook, WordBank};
 
 use wasm_bindgen::prelude::*;
@@ -33,6 +33,7 @@ extern "C" {
 
 struct GameState {
     screen_canvas: HtmlCanvasElement,
+    cur_money: RefCell<i32>,
     offscreen_canvas: OffscreenCanvas,
     canvas: OffscreenCanvasRenderingContext2d,
     images: HashMap<Image, ImageProps>,
@@ -49,6 +50,10 @@ struct GameState {
 impl BaseGame for GameState {
     fn set_global_alpha(&self, alpha: f64) {
         self.canvas.set_global_alpha(alpha);
+    }
+
+    fn add_money(&self, amt: i32) {
+        *self.cur_money.borrow_mut() += amt;
     }
 
     fn draw_image(&self, image: &Image, pos: &Pos2d) {
@@ -140,7 +145,7 @@ impl BaseGame for GameState {
 
     fn draw_text(&self, text: &String, pos: &Pos2d, cfg: &TextConfig) {
         let mut font_size: usize = cfg.size as usize;
-        if text.len() > 3 {
+        if cfg.scale_text && text.len() > 3 {
             font_size -= (text.len() - 3) * 3;
         }
 
@@ -192,6 +197,12 @@ impl GameState {
                 .get_context("2d").unwrap().unwrap()
                 .dyn_into::<CanvasRenderingContext2d>().unwrap();
 
+
+        // Draw current money
+        let money_pos = Pos2d::new(self.config.money.xpos, self.config.money.ypos);
+        self.draw_area_background(&money_pos, &self.config.money.bg);
+        self.draw_text(&format!("$ {}", *self.cur_money.borrow()), &money_pos, &self.config.money.text);
+
         //screen_context.set_image_smoothing_enabled(false);
         screen_context.draw_image_with_offscreen_canvas_and_dw_and_dh(
             &self.offscreen_canvas,
@@ -233,6 +244,7 @@ impl GameState {
         self.order_bar.borrow_mut().update_config(&cfg.order_bar);
         self.ingredient_area.borrow_mut().update_config(&cfg.ingredient_area);
         self.preparation_area.borrow_mut().update_config(&cfg.preparation_area);
+        self.config = cfg.clone();
     }
 
 }
@@ -303,6 +315,7 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 
     let state = GameState{
         screen_canvas: screen_canvas,
+        cur_money: RefCell::new(0),
         offscreen_canvas: offscreen_canvas,
         canvas: offscreen_context,
         images: state_images,
@@ -344,7 +357,7 @@ fn run_frame_imp(state_rc: &Rc<RefCell<GameState>>) {
         state.preparation_area.borrow().collect_interpolables(&mut interpolables);
     }
 
-    interpolables.advance_all(state.elapsed_time);
+    interpolables.advance_all(state.elapsed_time, &*state);
 
     state.draw();
 }
@@ -375,12 +388,13 @@ pub fn default_config() -> JsValue {
         draw_borders: false,
         order_bar: OrderBarConfig {
             xpos: 1700.0,
-            ypos: 100.0,
+            ypos: 150.0,
+            depreciation_seconds: 10.0,
             bg: BackgroundConfig {
                 x_off: -50.0,
-                y_off: -70.0,
+                y_off: -90.0,
                 width: 740.0,
-                height: 250.0,
+                height: 350.0,
                 corner_radius: 30.0,
                 border_style: "black".to_string(),
                 border_alpha: 1.0,
@@ -388,30 +402,41 @@ pub fn default_config() -> JsValue {
                 bg_style: "pink".to_string(),
                 bg_alpha: 0.2
             },
-            text: TextConfig {
+            text_price: TextConfig {
                 x_off: 0.0,
-                y_off: 80.0,
+                y_off: 200.0,
                 stroke: false,
                 style: "yellow".to_string(),
                 font: "comic sans".to_string(),
                 size: 48,
+                scale_text: true,
+                alpha: 0.4
+            },
+            text_remaining: TextConfig {
+                x_off: 10.0,
+                y_off: -20.0,
+                stroke: false,
+                style: "white".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                scale_text: false,
                 alpha: 0.4
             },
             progress_bar: ProgressBarConfig {
                 bg: BackgroundConfig {
                     x_off: 0.0,
-                    y_off: 200.0,
+                    y_off: 220.0,
                     width: 100.0,
-                    height: 30.0,
-                    corner_radius: 30.0,
+                    height: 5.0,
+                    corner_radius: 0.0,
                     border_style: "black".to_string(),
-                    border_alpha: 1.0,
-                    border_width: 5.0,
-                    bg_style: "pink".to_string(),
-                    bg_alpha: 0.2
+                    border_alpha: 0.0,
+                    border_width: 0.0,
+                    bg_style: "black".to_string(),
+                    bg_alpha: 0.4
                 },
                 done_alpha: 1.0,
-                done_style: "red".to_string(),
+                done_style: "yellow".to_string(),
             }
         },
         ingredient_area: IngredientAreaConfig {
@@ -439,12 +464,13 @@ pub fn default_config() -> JsValue {
                 style: "yellow".to_string(),
                 font: "comic sans".to_string(),
                 size: 48,
+                scale_text: true,
                 alpha: 0.4
             }
         },
         preparation_area: PreparationAreaConfig {
             xpos: 1500.0,
-            ypos: 500.0,
+            ypos: 600.0,
             plate: PreparationAreaStackConfig {
                 xpos: 10.0,
                 ypos: 50.0,
@@ -478,7 +504,34 @@ pub fn default_config() -> JsValue {
                 style: "yellow".to_string(),
                 font: "comic sans".to_string(),
                 size: 48,
+                scale_text: true,
                 alpha: 0.4
+            }
+        },
+        money: MoneyConfig {
+            xpos: 50.0,
+            ypos: 50.0,
+            bg: BackgroundConfig {
+                x_off: 0.0,
+                y_off: -20.0,
+                width: 400.0,
+                height: 250.0,
+                corner_radius: 30.0,
+                border_style: "black".to_string(),
+                border_alpha: 0.3,
+                border_width: 5.0,
+                bg_style: "light green".to_string(),
+                bg_alpha: 0.2
+            },
+            text: TextConfig {
+                x_off: 40.0,
+                y_off: 150.0,
+                stroke: true,
+                style: "gold".to_string(),
+                font: "comic sans".to_string(),
+                size: 128,
+                scale_text: false,
+                alpha: 1.0
             }
         }
     };

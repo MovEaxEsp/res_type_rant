@@ -39,7 +39,7 @@ impl PreparationAreaStack {
         }));
 
         let cb_ref = ret.clone();
-        ret.borrow().end_progress.set_moved_handler(Box::new(move || {
+        ret.borrow().end_progress.set_moved_handler(Box::new(move |_: &dyn BaseGame| {
             // Handle cooking being done
             let mut cb_self = cb_ref.borrow_mut();
 

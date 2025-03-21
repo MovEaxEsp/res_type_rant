@@ -42,6 +42,18 @@ impl WordBank {
             let mut line_iter = line.split(' ');
             let word = line_iter.next().unwrap();
 
+            let mut skip_word = false;
+            for char in word.chars() {
+                if char  < 'a' || char > 'z' {
+                    skip_word = true;
+                    break;
+                }
+            }
+
+            if skip_word {
+                continue;
+            }
+
             if word.chars().nth(0).unwrap() == '\'' ||  // skip entries starting with apostrophe
             word.len() == 1 || // skip single character "words"
             bad_words.contains(word) // skip bad words
