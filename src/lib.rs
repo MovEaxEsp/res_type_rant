@@ -7,7 +7,8 @@ mod traits;
 mod utils;
 
 use ingredient_area::IngredientArea;
-use interpolable::{InterpolableStore, Pos2d};
+use ingredients::MovableIngredient;
+use interpolable::Pos2d;
 use order_bar::OrderBar;
 use preparation_area::PreparationArea;
 use traits::{BackgroundConfig, BaseGame, GameConfig, Image, ImageProps, IngredientAreaConfig, OrderBarConfig, PreparationAreaConfig,
@@ -30,24 +31,16 @@ extern "C" {
 }
 
 ///////// GameState
-
-struct GameState {
-    screen_canvas: HtmlCanvasElement,
-    cur_money: RefCell<i32>,
-    offscreen_canvas: OffscreenCanvas,
+struct GameImp {
     canvas: OffscreenCanvasRenderingContext2d,
+    cur_money: RefCell<i32>,
     images: HashMap<Image, ImageProps>,
-    order_bar: Rc<RefCell<OrderBar>>,
-    ingredient_area: Rc<RefCell<IngredientArea>>,
-    preparation_area: Rc<RefCell<PreparationArea>>,
-    frame_start: Instant,  // time when previous frame started
-    elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
-    entered_text: String,
     words_bank: WordBank,
     config: GameConfig,
+    elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
 }
 
-impl BaseGame for GameState {
+impl BaseGame for GameImp {
     fn set_global_alpha(&self, alpha: f64) {
         self.canvas.set_global_alpha(alpha);
     }
@@ -68,6 +61,19 @@ impl BaseGame for GameState {
             props.height,
         )
         .expect("draw");
+    }
+
+    fn draw_gray_image(&self, image: &Image, pos: &Pos2d) {
+
+        if self.config.draw_gray {
+            let props = self.images.get(image).unwrap();
+
+            self.canvas.draw_image_with_offscreen_canvas(
+                &props.gray_image,
+                pos.xpos,
+                pos.ypos)
+            .expect("draw gray");
+        }
     }
 
     fn draw_border(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
@@ -173,52 +179,81 @@ impl BaseGame for GameState {
     fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps {
         &self.images[image]
     }
+
+    fn word_bank<'a>(&'a self) -> &'a WordBank {
+        &self.words_bank
+    }
+
+    fn elapsed_time(&self) -> f64 {
+        self.elapsed_time
+    }
+}
+
+struct GameState {
+    screen_canvas: HtmlCanvasElement,
+    offscreen_canvas: OffscreenCanvas,
+    order_bar: OrderBar,
+    ingredient_area: IngredientArea,
+    preparation_area: PreparationArea,
+    frame_start: Instant,  // time when previous frame started
+    entered_text: String,
+    imp: GameImp,
 }
 
 impl GameState {
+    fn think(&mut self) {
+        self.order_bar.think(&self.imp);
+        self.ingredient_area.think(&self.imp);
+        self.preparation_area.think(&self.imp);
+    }
+
     fn draw(&self) {
+        self.imp.canvas.set_fill_style_str("DimGrey");
+        self.imp.canvas.clear_rect(0.0, 0.0, 2560.0, 1440.0);
+        self.imp.canvas.fill_rect(0.0, 0.0, 2560.0, 1440.0);
 
-        self.canvas.rect(0.0, 0.0, 2560.0, 1440.0);
-        self.canvas.set_fill_style_str("DimGrey");
-        self.canvas.fill();
-
-        //self.canvas.set_image_smoothing_enabled(false);
-
-        self.order_bar.borrow().draw(self);
-        self.ingredient_area.borrow().draw(self);
-        self.preparation_area.borrow().draw(self);
+        self.order_bar.draw(&self.imp);
+        self.ingredient_area.draw(&self.imp);
+        self.preparation_area.draw(&self.imp);
     
         // Draw current input
-        self.canvas.set_fill_style_str("yellow");
-        self.canvas.set_font("48px serif");
-        self.canvas.fill_text(&self.entered_text, 20.0, 1300.0).expect("text");
-
-        let screen_context = self.screen_canvas
-                .get_context("2d").unwrap().unwrap()
-                .dyn_into::<CanvasRenderingContext2d>().unwrap();
-
+        self.imp.canvas.set_fill_style_str("yellow");
+        self.imp.canvas.set_font("48px serif");
+        self.imp.canvas.fill_text(&self.entered_text, 20.0, 1300.0).expect("text");
 
         // Draw current money
-        let money_pos = Pos2d::new(self.config.money.xpos, self.config.money.ypos);
-        self.draw_area_background(&money_pos, &self.config.money.bg);
-        self.draw_text(&format!("$ {}", *self.cur_money.borrow()), &money_pos, &self.config.money.text);
+        let money_pos = Pos2d::new(self.imp.config.money.xpos, self.imp.config.money.ypos);
+        self.imp.draw_area_background(&money_pos, &self.imp.config.money.bg);
+        self.imp.draw_text(&format!("$ {}", *self.imp.cur_money.borrow()), &money_pos, &self.imp.config.money.text);
 
-        //screen_context.set_image_smoothing_enabled(false);
+        let screen_context = self.screen_canvas
+        .get_context("2d").unwrap().unwrap()
+        .dyn_into::<CanvasRenderingContext2d>().unwrap();
+
+        screen_context.clear_rect(0.0, 0.0, self.screen_canvas.width() as f64, self.screen_canvas.height() as f64);
+
         screen_context.draw_image_with_offscreen_canvas_and_dw_and_dh(
             &self.offscreen_canvas,
             0.0, 0.0,
             self.screen_canvas.width() as f64, self.screen_canvas.height() as f64)
         .expect("draw offscreen canvas");
+
+
     }
 
     fn handle_command(&mut self) {
-        let handled = self.ingredient_area.borrow_mut().handle_command(
-            &self.entered_text,
-            &mut self.preparation_area.borrow_mut(),
-            &self.words_bank,
-            self);
+        let keywords = self.entered_text.split(' ').collect::<Vec<&str>>();
+
+        let mut selected_ings: Vec<MovableIngredient> = Vec::new();
+
+        self.ingredient_area.handle_command(
+            &keywords,
+            &mut selected_ings,
+            &self.imp);
+
+        let handled = self.preparation_area.handle_command(&keywords, &mut selected_ings, &self.imp);
         if !handled {
-            self.preparation_area.borrow_mut().handle_command(&self.entered_text, &self.order_bar, &self.words_bank, self);
+            self.order_bar.handle_command(&keywords, &mut selected_ings, &self.imp);
         }
     }
 
@@ -241,10 +276,10 @@ impl GameState {
     }
 
     fn update_config(&mut self, cfg: &GameConfig) {
-        self.order_bar.borrow_mut().update_config(&cfg.order_bar);
-        self.ingredient_area.borrow_mut().update_config(&cfg.ingredient_area);
-        self.preparation_area.borrow_mut().update_config(&cfg.preparation_area);
-        self.config = cfg.clone();
+        self.order_bar.update_config(&cfg.order_bar);
+        self.ingredient_area.update_config(&cfg.ingredient_area);
+        self.preparation_area.update_config(&cfg.preparation_area);
+        self.imp.config = cfg.clone();
     }
 
 }
@@ -278,7 +313,33 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
     }
 
     let mut image_def = |image: Image, width: f64, height: f64, cooked_image: Option<Image>| {
-        (image, ImageProps{image: image_map.remove(&image).unwrap(), width: width, height: height, cooked_image: cooked_image})
+
+        let html_img = image_map.remove(&image).unwrap();
+
+        let gray_canvas = OffscreenCanvas::new(width as u32, height as u32).expect("gray canvas");
+        let gray_context = gray_canvas.get_context("2d").unwrap().unwrap()
+                            .dyn_into::<OffscreenCanvasRenderingContext2d>().unwrap();
+
+        gray_context.set_filter("grayscale(1.0)");
+        gray_context.draw_image_with_html_image_element_and_dw_and_dh(
+            &html_img,
+            0.0,
+            0.0,
+            width,
+            height)
+        .expect("draw");
+
+        let ret = (image,
+         ImageProps{
+            image: html_img,
+            width: width,
+            height: height,
+            cooked_image: cooked_image,
+            gray_image: gray_canvas,
+         });
+
+
+        return ret;
     };
 
     let state_images = HashMap::from([
@@ -315,19 +376,20 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 
     let state = GameState{
         screen_canvas: screen_canvas,
-        cur_money: RefCell::new(0),
         offscreen_canvas: offscreen_canvas,
-        canvas: offscreen_context,
-        images: state_images,
         order_bar: order_bar,
-        ingredient_area: Rc::new(RefCell::new(ingredient_area)),
-        preparation_area: Rc::new(RefCell::new(preparation_area)),
+        ingredient_area: ingredient_area,
+        preparation_area: preparation_area,
         frame_start: Instant::now(),
-        elapsed_time: 0.0,
         entered_text: String::new(),
-        words_bank: words_bank,
-        config: game_config,
-
+        imp: GameImp {
+            canvas: offscreen_context,
+            images: state_images,
+            cur_money: RefCell::new(0),
+            words_bank: words_bank,
+            config: game_config,
+            elapsed_time: 0.0,
+        }
     };
 
     unsafe {
@@ -339,26 +401,10 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 fn run_frame_imp(state_rc: &Rc<RefCell<GameState>>) {
     let mut state = state_rc.borrow_mut();
 
-    state.elapsed_time = state.frame_start.elapsed().as_secs_f64();
+    state.imp.elapsed_time = state.frame_start.elapsed().as_secs_f64();
     state.frame_start = Instant::now();
 
-    // Let every entitity think
-    //for i in 0..state.entities.len() {
-    //    let entity = state.entities[i].as_ref();
-        //entity.think(state);
-    //}
-
-    // Advance all interpolables
-    let mut interpolables = InterpolableStore::new();
-    {
-        let order_bar = state.order_bar.borrow();
-        order_bar.collect_interpolables(&mut interpolables);
-        state.ingredient_area.borrow().collect_interpolables(&mut interpolables);
-        state.preparation_area.borrow().collect_interpolables(&mut interpolables);
-    }
-
-    interpolables.advance_all(state.elapsed_time, &*state);
-
+    state.think();
     state.draw();
 }
 
@@ -386,6 +432,7 @@ pub fn default_config() -> JsValue {
     let cfg = GameConfig {
         word_level: 0,
         draw_borders: false,
+        draw_gray: true,
         order_bar: OrderBarConfig {
             xpos: 1700.0,
             ypos: 150.0,
@@ -394,7 +441,7 @@ pub fn default_config() -> JsValue {
                 x_off: -50.0,
                 y_off: -90.0,
                 width: 740.0,
-                height: 350.0,
+                height: 400.0,
                 corner_radius: 30.0,
                 border_style: "black".to_string(),
                 border_alpha: 1.0,
@@ -404,7 +451,17 @@ pub fn default_config() -> JsValue {
             },
             text_price: TextConfig {
                 x_off: 0.0,
-                y_off: 200.0,
+                y_off: 210.0,
+                stroke: false,
+                style: "yellow".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                scale_text: true,
+                alpha: 0.4
+            },
+            text_keyword: TextConfig {
+                x_off: 0.0,
+                y_off: 260.0,
                 stroke: false,
                 style: "yellow".to_string(),
                 font: "comic sans".to_string(),
@@ -425,7 +482,7 @@ pub fn default_config() -> JsValue {
             progress_bar: ProgressBarConfig {
                 bg: BackgroundConfig {
                     x_off: 0.0,
-                    y_off: 220.0,
+                    y_off: 160.0,
                     width: 100.0,
                     height: 5.0,
                     corner_radius: 0.0,

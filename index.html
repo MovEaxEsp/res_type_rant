@@ -92,14 +92,24 @@
         }
 
         let wordsDb = null;
-        loadPromises.push(downloadDoc("https://raw.githubusercontent.com/hermitdave/FrequencyWords/refs/heads/master/content/2018/en/en_50k.txt").then(text => {
-          wordsDb = text;
-        }));
-
         let badWordsDb = null;
-        loadPromises.push(downloadDoc("https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/refs/heads/master/en").then(text => {
-          badWordsDb = text;
-        }));
+
+        if (false) { // hard-coded words for local dev with no internet
+          wordsDb = "aa 10\nbb 9 \ncc 8\ndd 7\nee 6\nff 5\ngg 4\nhh 3\nii 2\njj 1\nkk 1\nll 1\nmm 1";
+          badWordsDb = "z";
+        }
+
+        if (wordsDb === null) {
+          loadPromises.push(downloadDoc("https://raw.githubusercontent.com/hermitdave/FrequencyWords/refs/heads/master/content/2018/en/en_50k.txt").then(text => {
+            wordsDb = text;
+          }));
+        }
+
+        if (badWordsDb === null) {
+          loadPromises.push(downloadDoc("https://raw.githubusercontent.com/LDNOOBW/List-of-Dirty-Naughty-Obscene-and-Otherwise-Bad-Words/refs/heads/master/en").then(text => {
+            badWordsDb = text;
+          }));
+        }
 
         await Promise.all(loadPromises);
 

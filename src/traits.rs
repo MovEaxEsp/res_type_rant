@@ -1,8 +1,8 @@
-use web_sys::HtmlImageElement;
+use web_sys::{HtmlImageElement, OffscreenCanvas};
 
 use serde::{Serialize,Deserialize};
 
-use crate::interpolable::Pos2d;
+use crate::{interpolable::Pos2d, utils::WordBank};
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone)]
 pub enum Image {
@@ -18,6 +18,7 @@ pub enum Image {
 
 pub struct ImageProps {
     pub image: HtmlImageElement,
+    pub gray_image: OffscreenCanvas,
     pub cooked_image: Option<Image>,
     pub width: f64,
     pub height: f64,
@@ -63,6 +64,7 @@ pub struct OrderBarConfig {
     pub depreciation_seconds: f64,
     pub bg: BackgroundConfig,
     pub text_price: TextConfig,
+    pub text_keyword: TextConfig,
     pub text_remaining: TextConfig,
     pub progress_bar: ProgressBarConfig,
 }
@@ -113,12 +115,15 @@ pub struct GameConfig {
     pub ingredient_area: IngredientAreaConfig,
     pub preparation_area: PreparationAreaConfig,
     pub money: MoneyConfig,
+    pub draw_gray: bool,
 }
 
 pub trait BaseGame {
     fn set_global_alpha(&self, alpha: f64);
 
     fn draw_image(&self, image: &Image, pos: &Pos2d);
+
+    fn draw_gray_image(&self, image: &Image, pos: &Pos2d);
 
     fn draw_border(&self, xpos: f64, ypos: f64, width: f64, height: f64);
 
@@ -134,5 +139,9 @@ pub trait BaseGame {
 
     fn config<'a>(&'a self) ->  &'a GameConfig;
 
+    fn word_bank<'a>(&'a self) -> &'a WordBank;
+
     fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps;
+
+    fn elapsed_time(&self) -> f64;
 }

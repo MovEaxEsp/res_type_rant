@@ -253,6 +253,12 @@ function __wbg_get_imports() {
         const ret = arg0.call(arg1);
         return ret;
     }, arguments) };
+    imports.wbg.__wbg_clearRect_4790e3611b42f068 = function(arg0, arg1, arg2, arg3, arg4) {
+        arg0.clearRect(arg1, arg2, arg3, arg4);
+    };
+    imports.wbg.__wbg_clearRect_8e4ba7ea0e06711a = function(arg0, arg1, arg2, arg3, arg4) {
+        arg0.clearRect(arg1, arg2, arg3, arg4);
+    };
     imports.wbg.__wbg_closePath_cf0e7130243e1083 = function(arg0) {
         arg0.closePath();
     };
@@ -262,6 +268,9 @@ function __wbg_get_imports() {
     }, arguments) };
     imports.wbg.__wbg_drawImage_16485aae76d89dbf = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
         arg0.drawImage(arg1, arg2, arg3, arg4, arg5);
+    }, arguments) };
+    imports.wbg.__wbg_drawImage_473e6602e24e18aa = function() { return handleError(function (arg0, arg1, arg2, arg3) {
+        arg0.drawImage(arg1, arg2, arg3);
     }, arguments) };
     imports.wbg.__wbg_drawImage_bace06830ea9b05d = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
         arg0.drawImage(arg1, arg2, arg3, arg4, arg5);
@@ -279,6 +288,9 @@ function __wbg_get_imports() {
         } finally {
             wasm.__wbindgen_free(deferred0_0, deferred0_1, 1);
         }
+    };
+    imports.wbg.__wbg_fillRect_b1529535ac758d4c = function(arg0, arg1, arg2, arg3, arg4) {
+        arg0.fillRect(arg1, arg2, arg3, arg4);
     };
     imports.wbg.__wbg_fillText_4b725baf76b6a837 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4) {
         arg0.fillText(getStringFromWasm0(arg1, arg2), arg3, arg4);
@@ -432,6 +444,9 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_setfillStyle_cdad49953a5d0d27 = function(arg0, arg1) {
         arg0.fillStyle = arg1;
+    };
+    imports.wbg.__wbg_setfilter_e64919a11d897c73 = function(arg0, arg1, arg2) {
+        arg0.filter = getStringFromWasm0(arg1, arg2);
     };
     imports.wbg.__wbg_setfont_4c3584ef2f5c9f7e = function(arg0, arg1, arg2) {
         arg0.font = getStringFromWasm0(arg1, arg2);

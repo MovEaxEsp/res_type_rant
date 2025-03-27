@@ -1,7 +1,6 @@
 
 use crate::ingredients::MovableIngredient;
-use crate::interpolable::{Interpolable, Pos2d, InterpolableStore};
-use crate::preparation_area::PreparationArea;
+use crate::interpolable::{Interpolable, Pos2d};
 use crate::traits::{BaseGame, Image, IngredientAreaConfig};
 use crate::utils::WordBank;
 
@@ -34,6 +33,10 @@ impl IngredientArea {
         }
     }
 
+    pub fn think(&mut self, game: &dyn BaseGame) {
+        self.pos.advance(game.elapsed_time());
+    }
+
     fn grid_item_pos(&self, i: usize) -> Pos2d {
         Pos2d::new(
             self.pos.cur().xpos + self.cfg.grid_item_width * ((i % self.cfg.grid_width) as f64),
@@ -57,40 +60,29 @@ impl IngredientArea {
         }
     }
 
-    pub fn handle_command(&mut self, keyword: &String, prep: &mut PreparationArea, word_bank: &WordBank, game:&dyn BaseGame) -> bool{
-        for i in 0..self.ingredients.len() {
-            let ing_word: &String = &self.ingredient_words[i];
-            if ing_word == keyword {
-                self.ingredient_words[i] = word_bank.get_new_word();
+    pub fn handle_command(&mut self, keywords: &Vec<&str>, selected_ings: &mut Vec<MovableIngredient>, game:&dyn BaseGame) {
+        for keyword in keywords.iter() {
+            for i in 0..self.ingredients.len() {
+                let ing_word: &String = &self.ingredient_words[i];
+                if ing_word == keyword {
+                    self.ingredient_words[i] = game.word_bank().get_new_word();
 
-                let ing_pos = Interpolable::new_b(
-                    Pos2d::new(120.0 * ((i%6) as f64), 80.0 * ((i/6) as f64)),
-                    1000.0,
-                    &self.pos);
+                    let ing_pos = Interpolable::new_b(
+                        Pos2d::new(120.0 * ((i%6) as f64), 80.0 * ((i/6) as f64)),
+                        1000.0,
+                        &self.pos);
 
-
-                    log(&format!("send_ingredient: {:?}", ing_pos));
-
-                prep.send_ingredient(
-                    MovableIngredient::new(
-                        self.ingredients[i],
-                        ing_pos),
-                    word_bank,
-                    game);
-                return true;
+                    selected_ings.push(MovableIngredient::new(
+                            self.ingredients[i],
+                            ing_pos));
+                }
             }
         }
-
-        return false;
     }
 
     pub fn update_config(&mut self, cfg: &IngredientAreaConfig) {
         self.cfg = cfg.clone();
 
         self.pos.set_end(Pos2d::new(cfg.xpos, cfg.ypos));
-    }
-
-    pub fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        dest.interpolables_2d.push(self.pos.clone());
     }
 }

@@ -3,8 +3,6 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
-use crate::traits::BaseGame;
-
 pub trait Advanceable<T> {
     fn advance(&mut self, end: T, speed: f64, elapsed_time: f64);
 }
@@ -100,7 +98,6 @@ struct InterpolableImp<T> {
     end: T,
     speed: f64, // units per second
     base: Option<Rc<RefCell<InterpolableImp<T>>>>,
-    moved_handler: Rc<RefCell<Box<dyn FnMut(&dyn BaseGame)>>>,
 }
 
 impl<T> InterpolableImp<T>
@@ -111,7 +108,6 @@ where T: Clone + Copy + std::ops::Add<Output = T> + std::ops::Sub<Output = T> {
             end: val,
             speed: speed,
             base: None,
-            moved_handler: Rc::new(RefCell::new(Box::new(|_: &dyn BaseGame| {}))),
         }
     }
 
@@ -166,20 +162,27 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
     }
     */
     
-    pub fn rebase(&mut self, new_base: &Interpolable<T>, new_offset: T, immediate: bool) {
+    pub fn rebase(&mut self, new_base: Option<Interpolable<T>>, new_offset: T, immediate: bool) {
         let cur_pos = self.cur();
 
         let imp = &mut *self.imp.borrow_mut();
 
-        imp.base = Some(new_base.imp.clone());
-
+        match &new_base {
+            Some(b) => imp.base = Some(b.imp.clone()),
+            None => imp.base = None,
+        }
+        
         imp.end = new_offset;
 
         if immediate {
             imp.cur = new_offset;
         }
         else {
-            imp.cur = cur_pos - new_base.cur();
+            match &new_base {
+                Some(b) => imp.cur = cur_pos - b.cur(),
+                None => imp.cur = cur_pos,
+            }
+            
         }
     }
 
@@ -191,24 +194,31 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
         return self.imp.borrow().calc_cur();
     }
 
+    pub fn base(&self) -> Option<Interpolable<T>> {
+        match &(*self.imp.borrow()).base {
+            Some(b) => Some(Interpolable::<T> {imp: b.clone()}),
+            None => None
+        }
+    }
+
     /*
     pub fn end(&self) -> T {
         self.imp.borrow().end.clone()
     }
     */
 
-    pub fn advance(&self, elapsed_time:f64) -> Option<Rc<RefCell<Box<dyn FnMut(&dyn BaseGame)>>>> {
+    pub fn advance(&self, elapsed_time:f64) -> bool {
         let imp = &mut self.imp.borrow_mut();
         if imp.cur != imp.end {
             let end = imp.end.clone();
             let speed = imp.speed;
             imp.cur.advance(end, speed, elapsed_time);
             if imp.cur == imp.end {
-                return Some(imp.moved_handler.clone());
+                return true;
             }
         }
 
-        None
+        false
     }
 
     pub fn set_cur(&self, cur: T) {
@@ -224,10 +234,6 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
         self.imp.borrow_mut().speed = speed;
     }
     */
-
-    pub fn set_moved_handler(&self, handler: Box<dyn FnMut(&dyn BaseGame)>) {
-        self.imp.borrow_mut().moved_handler = Rc::new(RefCell::new(handler));
-    }
 }
 
 impl<T> fmt::Debug for Interpolable<T>
@@ -237,38 +243,5 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
          .field("imp", &self.imp)
          .field("effective_cur", &self.cur())
          .finish()
-    }
-}
-
-pub struct InterpolableStore {
-    pub interpolables_1d: Vec<Interpolable<f64>>,
-    pub interpolables_2d: Vec<Interpolable<Pos2d>>,
-}
-
-impl InterpolableStore {
-    pub fn new() -> Self {
-        InterpolableStore {
-            interpolables_1d: Vec::new(),
-            interpolables_2d: Vec::new(),
-        }
-    }
-
-    pub fn advance_all(&self, elapsed_time: f64, game: &dyn BaseGame) {
-        let mut done_cbs: Vec<Rc<RefCell<Box<dyn FnMut(&dyn BaseGame)>>>> = Vec::new();
-
-        for intr in self.interpolables_1d.iter() {
-            if let Some(cb) = intr.advance(elapsed_time) {
-                done_cbs.push(cb);
-            }
-        }
-        for intr in self.interpolables_2d.iter() {
-            if let Some(cb) = intr.advance(elapsed_time) {
-                done_cbs.push(cb);
-            }
-        }
-
-        for cb in done_cbs {
-            cb.borrow_mut()(game);
-        }
     }
 }

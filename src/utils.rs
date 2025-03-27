@@ -192,3 +192,81 @@ impl Entity for DrawableStack {
     }
 }
 */
+
+
+
+
+/* spinning overlapping ingredients
+
+
+        // Testing clipping
+        let c = &self.canvas;
+        let side = 200.0;
+        let x = 500.0;
+        let y = 300.0;
+        let pi = f64::consts::PI;
+        let cx = x+side/2.0;
+        let cy = y+side/2.0;
+
+        if !self.spin_start.is_moving() {
+            self.spin_start.set_end(2.0*pi);
+            self.spin_start.set_cur(0.0);
+        }
+
+        self.spin_start.advance(self.elapsed_time);
+        let mut arc_pos = self.spin_start.cur();
+
+        let turn_amt = (pi*2.0)/6.0;
+
+        let mut draw = |img: Image, color: &str| {
+
+
+
+            c.save();
+            c.begin_path();
+            c.arc(cx, cy, side/2.0, arc_pos, arc_pos+turn_amt).expect("f");
+            c.line_to(cx, cy);
+            c.close_path();
+            arc_pos += turn_amt;
+            c.set_fill_style_str(color);
+            //c.fill();
+            //c.stroke();
+            c.clip();
+
+
+            let props = self.images.get(&img).unwrap();
+
+            let img_width = props.width*2.0;
+            let img_height = props.height*4.0;
+            self.canvas.draw_image_with_html_image_element_and_dw_and_dh(
+                &props.image,
+                x + (side-img_width)/2.0,
+                y + (side-img_height)/2.0,
+                img_width,
+                img_height
+            )
+            .expect("draw");
+        
+            c.restore();
+
+            let line_x = cx + (side/2.0)*arc_pos.cos();
+            let line_y = cy + (side/2.0)*arc_pos.sin();
+            c.begin_path();
+            c.move_to(cx, cy);
+            c.line_to(line_x, line_y);
+            c.stroke();
+        };
+
+        //c.save();
+
+        draw(Image::BurgerBottom, "red");
+        draw(Image::CookedPatty, "green");
+        draw(Image::LettuceLeaf, "blue");
+        draw(Image::BurgerTop, "yellow");
+        draw(Image::RawPatty, "yellow");
+        draw(Image::TomatoSlice, "yellow");
+
+        //c.restore();
+
+
+*/ 

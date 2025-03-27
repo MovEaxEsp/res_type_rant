@@ -1,11 +1,9 @@
 
 use crate::ingredients::{IngredientStack, MovableIngredient};
-use crate::interpolable::{Interpolable, InterpolableStore, Pos2d};
-use crate::order_bar::OrderBar;
+use crate::interpolable::{Interpolable, Pos2d};
 use crate::traits::{BaseGame, Image, PreparationAreaConfig, PreparationAreaStackConfig, TextConfig};
 use crate::utils::WordBank;
 
-use std::cell::RefCell;
 use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
@@ -27,8 +25,8 @@ struct PreparationAreaStack {
 }
 
 impl PreparationAreaStack {
-    fn new(pos: Interpolable<Pos2d>, base_image: &Image, keyword: Rc<String>, cfg: &PreparationAreaStackConfig) -> Rc<RefCell<Self>> {
-        let ret = Rc::new(RefCell::new(PreparationAreaStack {
+    fn new(pos: Interpolable<Pos2d>, base_image: &Image, keyword: Rc<String>, cfg: &PreparationAreaStackConfig) -> Self {
+        PreparationAreaStack {
             stack: IngredientStack::new(pos),
             cooked_stack: None,
             base_image: *base_image,
@@ -36,30 +34,22 @@ impl PreparationAreaStack {
             is_cooked: false,
             keyword: keyword,
             end_progress: Interpolable::new(1.0, 1.0/cfg.cook_time),
-        }));
-
-        let cb_ref = ret.clone();
-        ret.borrow().end_progress.set_moved_handler(Box::new(move |_: &dyn BaseGame| {
-            // Handle cooking being done
-            let mut cb_self = cb_ref.borrow_mut();
-
-            let cooked_stack = cb_self.cooked_stack.take().unwrap();
-
-            // Replace each ingredient with its cooked version
-            for i in 0..cb_self.stack.ingredients.len() {
-                cb_self.stack.ingredients[i].image = cooked_stack[i];
-            }
-
-            cb_self.is_cooked = true;
-        }));
-
-        ret
+        }
     }
 
-    fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        self.stack.collect_interpolables(dest);
+    fn think(&mut self, game: &dyn BaseGame) {
+        self.stack.think(game);
 
-        dest.interpolables_1d.push(self.end_progress.clone());
+        if self.end_progress.advance(game.elapsed_time()) {
+            let cooked_stack = self.cooked_stack.take().unwrap();
+
+            // Replace each ingredient with its cooked version
+            for i in 0..self.stack.ingredients.len() {
+                self.stack.ingredients[i].image = cooked_stack[i];
+            }
+
+            self.is_cooked = true;
+        }
     }
 
     fn draw(&self, game: &dyn BaseGame, cfg: &PreparationAreaStackConfig, text_cfg: &TextConfig) {
@@ -120,7 +110,7 @@ impl PreparationAreaStack {
 
     // Return 'true' if the specified 'keyword' matches our keyword, and replace it with a new
     // one from the specified 'word_bank'.
-    fn check_keyword(&mut self, keyword: &String, word_bank:&WordBank) -> bool {
+    fn check_keyword(&mut self, keyword: &str, word_bank:&WordBank) -> bool {
         if self.end_progress.is_moving() || self.is_selected{
             // Can't match while we're cooking or already selected
             return false;
@@ -143,8 +133,7 @@ impl PreparationAreaStack {
 
 pub struct PreparationArea {
     pos: Interpolable<Pos2d>,
-    plate: Rc<RefCell<PreparationAreaStack>>,
-    pan: Rc<RefCell<PreparationAreaStack>>,
+    pan: PreparationAreaStack,
     cfg: PreparationAreaConfig,
 }
 
@@ -155,11 +144,6 @@ impl PreparationArea {
 
         let ret = PreparationArea {
             pos: pos.clone(),
-            plate: PreparationAreaStack::new(
-                    Interpolable::new_b(Pos2d::new(cfg.plate.xpos, cfg.plate.ypos), 1000.0, &pos.clone()),
-                    &Image::Plate,
-                    word_bank.get_new_word(),
-                    &cfg.plate),
             pan: PreparationAreaStack::new(
                     Interpolable::new_b(Pos2d::new(cfg.pan.xpos, cfg.pan.ypos), 1000.0, &pos.clone()),
                     &Image::Pan,
@@ -168,83 +152,39 @@ impl PreparationArea {
             cfg: cfg.clone()
         };
 
-        ret.plate.borrow_mut().is_selected = true;
-
         ret
     }
 
-    pub fn collect_interpolables(&self, dest: &mut InterpolableStore) {
-        self.plate.borrow().collect_interpolables(dest);
-        self.pan.borrow().collect_interpolables(dest);
-        dest.interpolables_2d.push(self.pos.clone());
+    pub fn think(&mut self, game: &dyn BaseGame) {
+        self.pan.think(game);
+
+        self.pos.advance(game.elapsed_time());
     }
 
-    fn send_ingredient_imp(ingredient: MovableIngredient, game:&dyn BaseGame, plate: &mut PreparationAreaStack, pan: &mut PreparationAreaStack) {
-        if plate.is_selected {
-            if ingredient.image != Image::RawPatty {
-                plate.stack.add_ingredient(ingredient, false);
+    pub fn handle_command(&mut self, keywords: &Vec<&str>, selected_ings: &mut Vec<MovableIngredient>, game:&dyn BaseGame) -> bool {
+        let pan = &mut self.pan;
+
+        for keyword in keywords.iter() {
+            if pan.check_keyword(*keyword, game.word_bank()) {
+                if pan.is_cooked {
+                    let cooked_ing = &pan.stack.ingredients[0];
+                    let new_ing = MovableIngredient::new(cooked_ing.image, Interpolable::new(cooked_ing.pos.cur(), 1000.0));
+                    selected_ings.push(new_ing);
+                    pan.reset();
+
+                    return false;
+                }
+                else if pan.stack.ingredients.is_empty() {
+                    for i in 0..selected_ings.len() {
+                        if selected_ings[i].image == Image::RawPatty {
+                            pan.stack.add_ingredient(selected_ings.remove(i), false);
+                            pan.start_cooking(game);
+                        }
+                    }
+                }
+
+                return true;
             }
-        }
-        else if pan.is_selected {
-            // Always go back to plate after sending something to pan
-            pan.is_selected = false;
-            plate.is_selected = true;
-
-            if ingredient.image == Image::RawPatty {
-                pan.stack.add_ingredient(ingredient, false);
-                pan.start_cooking(game);
-            }
-        }
-    }
-
-    pub fn send_ingredient(&mut self, ingredient: MovableIngredient, _word_bank: &WordBank, game: &dyn BaseGame) {
-        PreparationArea::send_ingredient_imp(ingredient, game,&mut self.plate.borrow_mut(), &mut self.pan.borrow_mut());
-    }
-
-    pub fn handle_command(&mut self, keyword: &String, order_bar: &Rc<RefCell<OrderBar>>, word_bank: &WordBank, game:&dyn BaseGame) -> bool {
-        let mut plate = self.plate.borrow_mut();
-        let mut pan = self.pan.borrow_mut();
-
-        if  keyword == "trash" {
-            plate.stack.ingredients.clear();
-            return true;
-        }
-        
-        if keyword == "send" {
-            let order_bar_rc= order_bar.clone();
-
-            let done_order = &mut plate.stack;
-            let mut new_order = IngredientStack::new(Interpolable::new(done_order.pos.cur(), 1000.0)); 
-            for ing in done_order.ingredients.iter() {
-                new_order.add_ingredient(
-                    MovableIngredient::new(ing.image, Interpolable::new(Pos2d::new(0.0, 0.0), 1000.0)),
-                    true);
-            }
-            done_order.ingredients.clear();
-
-            order_bar.borrow_mut().try_submit_order(new_order,
-                                                    order_bar_rc);
-            return true;
-        }
-        
-        if plate.check_keyword(keyword, word_bank) {
-            plate.is_selected = true;
-            pan.is_selected = false;
-            return true;
-        }
-
-        if pan.check_keyword(keyword, word_bank) {
-            if pan.is_cooked {
-                let cooked_ing = &pan.stack.ingredients[0];
-                let new_ing = MovableIngredient::new(cooked_ing.image, Interpolable::new(cooked_ing.pos.cur(), 1000.0));
-                PreparationArea::send_ingredient_imp(new_ing, game, &mut plate, &mut pan);
-                pan.reset();
-            }
-            else {
-                pan.is_selected = true;
-                plate.is_selected = false;
-            }
-            return true;
         }
 
         return false;
@@ -253,8 +193,7 @@ impl PreparationArea {
     pub fn draw(&self, game: &dyn BaseGame) {
         game.draw_area_background(&self.pos.cur(), &self.cfg.bg);
 
-        self.plate.borrow().draw(game, &self.cfg.plate, &self.cfg.text);
-        self.pan.borrow().draw(game, &self.cfg.pan, &self.cfg.text);
+        self.pan.draw(game, &self.cfg.pan, &self.cfg.text);
 
         if game.config().draw_borders {
             game.draw_border(self.pos.cur().xpos, self.pos.cur().ypos, 300.0, IngredientStack::height());
@@ -265,7 +204,6 @@ impl PreparationArea {
         self.cfg = cfg.clone();
 
         self.pos.set_end(Pos2d::new(cfg.xpos, cfg.ypos));
-        self.plate.borrow_mut().stack.pos.set_end(Pos2d::new(cfg.plate.xpos, cfg.plate.ypos));
-        self.pan.borrow_mut().stack.pos.set_end(Pos2d::new(cfg.pan.xpos, cfg.pan.ypos));
+        self.pan.stack.pos.set_end(Pos2d::new(cfg.pan.xpos, cfg.pan.ypos));
     }
 }
