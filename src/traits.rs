@@ -47,6 +47,7 @@ pub struct TextConfig {
     pub font: String,
     pub size: i32,
     pub scale_text: bool,
+    pub is_command: bool,
     pub alpha: f64,
 }
 

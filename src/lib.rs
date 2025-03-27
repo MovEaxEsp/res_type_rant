@@ -8,7 +8,7 @@ mod utils;
 
 use ingredient_area::IngredientArea;
 use ingredients::MovableIngredient;
-use interpolable::Pos2d;
+use interpolable::{Pos2d, Interpolable};
 use order_bar::OrderBar;
 use preparation_area::PreparationArea;
 use traits::{BackgroundConfig, BaseGame, GameConfig, Image, ImageProps, IngredientAreaConfig, OrderBarConfig, PreparationAreaConfig,
@@ -38,6 +38,11 @@ struct GameImp {
     words_bank: WordBank,
     config: GameConfig,
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
+    entered_text: String,
+    entered_keywords: Vec<String>, // space-split version of entered_text
+    keyword_r: Interpolable<f64>,
+    keyword_g: Interpolable<f64>,
+    keyword_b: Interpolable<f64>,
 }
 
 impl BaseGame for GameImp {
@@ -155,20 +160,57 @@ impl BaseGame for GameImp {
             font_size -= (text.len() - 3) * 3;
         }
 
-        self.canvas.set_font(&format!("{}px {}", font_size, cfg.font));
         self.canvas.set_global_alpha(cfg.alpha);
 
         let draw_pos = *pos + Pos2d::new(cfg.x_off, cfg.y_off);
 
+        self.canvas.set_fill_style_str(&cfg.style);
+        self.canvas.set_stroke_style_str(&cfg.style);
+
+        let draw_fn: Box<dyn Fn(&str, f64, f64)>;
         if cfg.stroke {
-            self.canvas.set_stroke_style_str(&cfg.style);
-            self.canvas.stroke_text(&text, draw_pos.xpos, draw_pos.ypos).expect("text");
+            draw_fn = Box::new(|text, xpos, ypos| {
+                self.canvas.stroke_text(text, xpos, ypos).expect("text");
+            });
         }
         else {
-            self.canvas.set_fill_style_str(&cfg.style);
-            self.canvas.fill_text(&text, draw_pos.xpos, draw_pos.ypos).expect("text");
+            draw_fn = Box::new(|text, xpos, ypos| {
+                self.canvas.fill_text(text, xpos, ypos).expect("text");
+            });
         }
     
+        let mut drawn = false;
+        if cfg.is_command {
+            if self.entered_keywords.iter().find(|x| *x == text).is_some() {
+                self.canvas.set_fill_style_str(
+                    &format!("rgb({},{},{})", self.keyword_r.cur() as i32, self.keyword_g.cur() as i32, self.keyword_b.cur() as i32));
+                self.canvas.set_font(&format!("bold {}px {}", font_size, cfg.font));
+                draw_fn(text, draw_pos.xpos, draw_pos.ypos);
+                drawn = true;
+            }
+            else if !self.entered_keywords.is_empty() &&
+                    text.starts_with(self.entered_keywords.last().unwrap())
+            {
+                let last_keyword = self.entered_keywords.last().unwrap();
+                // Underline the matching part of the word
+                self.canvas.set_font(&format!("italic {}px {}", font_size, cfg.font));
+                draw_fn(last_keyword, draw_pos.xpos, draw_pos.ypos);
+
+                let underlined_width = self.canvas.measure_text(last_keyword).expect("measure text");
+                //let new_x = draw_pos.xpos + underlined_width.actual_bounding_box_left() + underlined_width.actual_bounding_box_right();
+                let new_x = draw_pos.xpos + underlined_width.width();
+
+                self.canvas.set_font(&format!("{}px {}", font_size, cfg.font));
+                draw_fn(&text[last_keyword.len()..], new_x, draw_pos.ypos);
+                drawn = true;
+            }
+        }
+
+        if !drawn {
+            self.canvas.set_font(&format!("{}px {}", font_size, cfg.font));
+            draw_fn(text, draw_pos.xpos, draw_pos.ypos);
+        }
+
         self.canvas.set_global_alpha(1.0);
     }
 
@@ -189,6 +231,26 @@ impl BaseGame for GameImp {
     }
 }
 
+impl GameImp {
+    fn think(&mut self) {
+        let advance_color = |intr: &mut Interpolable<f64>, elapsed_time: f64| {
+            intr.advance(elapsed_time);
+            if !intr.is_moving() {
+                if intr.cur() == 0.0 {
+                    intr.set_end(255.0);
+                }
+                else {
+                    intr.set_end(0.0);
+                }
+            }
+        };
+
+        advance_color(&mut self.keyword_r, self.elapsed_time);
+        advance_color(&mut self.keyword_g, self.elapsed_time);
+        advance_color(&mut self.keyword_b, self.elapsed_time);
+    }
+}
+
 struct GameState {
     screen_canvas: HtmlCanvasElement,
     offscreen_canvas: OffscreenCanvas,
@@ -196,12 +258,12 @@ struct GameState {
     ingredient_area: IngredientArea,
     preparation_area: PreparationArea,
     frame_start: Instant,  // time when previous frame started
-    entered_text: String,
     imp: GameImp,
 }
 
 impl GameState {
     fn think(&mut self) {
+        self.imp.think();
         self.order_bar.think(&self.imp);
         self.ingredient_area.think(&self.imp);
         self.preparation_area.think(&self.imp);
@@ -219,7 +281,7 @@ impl GameState {
         // Draw current input
         self.imp.canvas.set_fill_style_str("yellow");
         self.imp.canvas.set_font("48px serif");
-        self.imp.canvas.fill_text(&self.entered_text, 20.0, 1300.0).expect("text");
+        self.imp.canvas.fill_text(&self.imp.entered_text, 20.0, 1300.0).expect("text");
 
         // Draw current money
         let money_pos = Pos2d::new(self.imp.config.money.xpos, self.imp.config.money.ypos);
@@ -242,7 +304,7 @@ impl GameState {
     }
 
     fn handle_command(&mut self) {
-        let keywords = self.entered_text.split(' ').collect::<Vec<&str>>();
+        let keywords = self.imp.entered_text.split(' ').collect::<Vec<&str>>();
 
         let mut selected_ings: Vec<MovableIngredient> = Vec::new();
 
@@ -259,20 +321,22 @@ impl GameState {
 
     fn handle_key(&mut self, key: &str, _state_rc: &Rc<RefCell<GameState>>) {
         if key.len() == 1 {
-            self.entered_text.push(key.chars().nth(0).unwrap());
+            self.imp.entered_text.push(key.chars().nth(0).unwrap());
         }
         else if key == "Backspace" {
-            if self.entered_text.len() > 0 {
-                self.entered_text.pop();
+            if self.imp.entered_text.len() > 0 {
+                self.imp.entered_text.pop();
             }
         }
         else if key == "Enter" {
             self.handle_command();
-            self.entered_text.clear();
+            self.imp.entered_text.clear();
         }
         else {
             log(&format!("Unhandled key: {}", key));
         }
+
+        self.imp.entered_keywords = self.imp.entered_text.split_whitespace().map(String::from).collect();
     }
 
     fn update_config(&mut self, cfg: &GameConfig) {
@@ -381,14 +445,18 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         ingredient_area: ingredient_area,
         preparation_area: preparation_area,
         frame_start: Instant::now(),
-        entered_text: String::new(),
         imp: GameImp {
             canvas: offscreen_context,
             images: state_images,
             cur_money: RefCell::new(0),
             words_bank: words_bank,
             config: game_config,
-            elapsed_time: 0.0,
+            elapsed_time: 0.0, 
+            entered_text: String::new(),
+            entered_keywords: Vec::new(),
+            keyword_r: Interpolable::new(72.0, 111.0),
+            keyword_g: Interpolable::new(23.0, 79.0),
+            keyword_b: Interpolable::new(219.0, 231.0),
         }
     };
 
@@ -457,7 +525,8 @@ pub fn default_config() -> JsValue {
                 font: "comic sans".to_string(),
                 size: 48,
                 scale_text: true,
-                alpha: 0.4
+                alpha: 0.4,
+                is_command: false,
             },
             text_keyword: TextConfig {
                 x_off: 0.0,
@@ -467,7 +536,8 @@ pub fn default_config() -> JsValue {
                 font: "comic sans".to_string(),
                 size: 48,
                 scale_text: true,
-                alpha: 0.4
+                alpha: 0.4,
+                is_command: true,
             },
             text_remaining: TextConfig {
                 x_off: 10.0,
@@ -477,7 +547,8 @@ pub fn default_config() -> JsValue {
                 font: "comic sans".to_string(),
                 size: 48,
                 scale_text: false,
-                alpha: 0.4
+                alpha: 0.4,
+                is_command: false,
             },
             progress_bar: ProgressBarConfig {
                 bg: BackgroundConfig {
@@ -522,7 +593,8 @@ pub fn default_config() -> JsValue {
                 font: "comic sans".to_string(),
                 size: 48,
                 scale_text: true,
-                alpha: 0.4
+                alpha: 0.4,
+                is_command: true,
             }
         },
         preparation_area: PreparationAreaConfig {
@@ -562,7 +634,8 @@ pub fn default_config() -> JsValue {
                 font: "comic sans".to_string(),
                 size: 48,
                 scale_text: true,
-                alpha: 0.4
+                alpha: 0.4,
+                is_command: true,
             }
         },
         money: MoneyConfig {
@@ -588,7 +661,8 @@ pub fn default_config() -> JsValue {
                 font: "comic sans".to_string(),
                 size: 128,
                 scale_text: false,
-                alpha: 1.0
+                alpha: 1.0,
+                is_command: false,
             }
         }
     };

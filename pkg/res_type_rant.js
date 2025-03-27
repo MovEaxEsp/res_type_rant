@@ -389,6 +389,10 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_log_d0324bc71cb00ae1 = function(arg0, arg1) {
         console.log(getStringFromWasm0(arg0, arg1));
     };
+    imports.wbg.__wbg_measureText_f0f078704231c37f = function() { return handleError(function (arg0, arg1, arg2) {
+        const ret = arg0.measureText(getStringFromWasm0(arg1, arg2));
+        return ret;
+    }, arguments) };
     imports.wbg.__wbg_new_2ef971087cb43792 = function() { return handleError(function (arg0, arg1) {
         const ret = new OffscreenCanvas(arg0 >>> 0, arg1 >>> 0);
         return ret;
@@ -488,6 +492,10 @@ function __wbg_get_imports() {
     }, arguments) };
     imports.wbg.__wbg_stroke_44080cc2554b4436 = function(arg0) {
         arg0.stroke();
+    };
+    imports.wbg.__wbg_width_2fafd30484634e26 = function(arg0) {
+        const ret = arg0.width;
+        return ret;
     };
     imports.wbg.__wbg_width_5dde457d606ba683 = function(arg0) {
         const ret = arg0.width;
