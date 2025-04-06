@@ -8,12 +8,16 @@ use std::collections::HashMap;
 
 #[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Serialize, Deserialize)]
 pub enum Image {
+    BaconCooked,
+    BaconRaw,
     BurgerBottom,
     BurgerTop,
     CookedPatty,
     Curry,
     CurryCrab,
     Dumplings,
+    EggsFried,
+    EggsRaw,
     Flour,
     LettuceLeaf,
     Pan,
@@ -137,15 +141,19 @@ impl Images {
         };
 
         ImagesConfig {
-            scale: 1.5,
+            scale: 1.0,
             images: vec![
+                image_def(Image::BaconCooked, "bacon_cooked.png", 100.0, 70.0),
+                image_def(Image::BaconRaw, "bacon_raw.png", 100.0, 60.0),
                 image_def(Image::BurgerBottom, "burger_bottom.png", 100.0, 30.0),
                 image_def(Image::BurgerTop, "burger_top.png", 100.0, 30.0),
                 image_def(Image::CookedPatty, "cooked_patty.png", 100.0, 30.0),
-                image_def(Image::Curry, "curry.png", 50.0, 75.0),
+                image_def(Image::Curry, "curry.png", 100.0, 140.0),
                 image_def(Image::CurryCrab, "curry_crab.png", 150.0, 100.0),
                 image_def(Image::Dumplings, "dumplings.png", 100.0, 60.0),
-                image_def(Image::Flour, "flour.png", 70.0, 100.0),
+                image_def(Image::EggsFried, "eggs_fried.png", 100.0, 70.0),
+                image_def(Image::EggsRaw, "eggs_raw.png", 100.0, 60.0),
+                image_def(Image::Flour, "flour.png", 100.0, 100.0),
                 image_def(Image::LettuceLeaf, "lettuce_leaf.png", 100.0, 30.0),
                 image_def(Image::Pan, "pan.png", 200.0, 30.0),
                 image_def(Image::Plate, "plate.png", 100.0, 30.0),

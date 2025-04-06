@@ -88,7 +88,7 @@ impl IngredientArea {
             ingredients: vec![
                 Image::BurgerBottom, Image::BurgerTop, Image::LettuceLeaf,
                 Image::TomatoSlice, Image::Flour, Image::Curry,
-                Image::RawPatty, Image::RawCrab
+                Image::RawPatty, Image::RawCrab, Image::BaconRaw, Image::EggsRaw,
             ],
             bg: BackgroundConfig {
                 offset: (-50, -150).into(),

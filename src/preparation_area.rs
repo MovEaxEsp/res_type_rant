@@ -296,7 +296,17 @@ impl PreparationArea {
                             inputs: vec![Image::RawPatty],
                             outputs: vec![Image::CookedPatty],
                             cook_time: 10.0,
-                        }
+                        },
+                        CookingRecipe {
+                            inputs: vec![Image::EggsRaw],
+                            outputs: vec![Image::EggsFried],
+                            cook_time: 6.0,
+                        },
+                        CookingRecipe {
+                            inputs: vec![Image::BaconRaw],
+                            outputs: vec![Image::BaconCooked],
+                            cook_time: 8.0,
+                        },
                     ],
                     instances: vec![ (0, 300).into(), (300, 300).into()]
                 },

@@ -255,6 +255,16 @@ impl OrderBar {
 
     /// Return the default configuration for the OrderBar 
     pub fn default_config() -> OrderBarConfig {
+
+        // Shorthand for defining ingredients in config
+        fn oic(ing: Image, chance: f64, price: i32) -> OrderIngredientConfig {
+            OrderIngredientConfig {
+                ing: ing,
+                chance: chance,
+                price: price
+            }
+        }
+
         OrderBarConfig {
             pos: (1200, 400).into(),
             order_margin: 20.0,
@@ -317,67 +327,51 @@ impl OrderBar {
             orders: vec![
                 OrderConfig { // Burger
                     ings: vec![
-                        OrderIngredientConfig {
-                            ing: Image::BurgerBottom,
-                            chance: 1.0,
-                            price: 3,
-                        },
-                        OrderIngredientConfig {
-                            ing: Image::CookedPatty,
-                            chance: 1.0,
-                            price: 10,
-                        },
-                        OrderIngredientConfig {
-                            ing: Image::LettuceLeaf,
-                            chance: 0.7,
-                            price: 4,
-                        },
-                        OrderIngredientConfig {
-                            ing: Image::TomatoSlice,
-                            chance: 0.6,
-                            price: 5,
-                        },
-                        OrderIngredientConfig {
-                            ing: Image::BurgerTop,
-                            chance: 1.0,
-                            price: 3,
-                        }
+                        oic(Image::BurgerBottom, 1.0, 3),
+                        oic(Image::CookedPatty,  1.0, 8),
+                        oic(Image::LettuceLeaf,  0.7, 4),
+                        oic(Image::TomatoSlice,  0.6, 5),
+                        oic(Image::BurgerTop,    1.0, 3),
                     ],
                     weight: 1.0,
                     depreciation_seconds:5.0
                 },
                 OrderConfig { // Salad
                     ings: vec![
-                        OrderIngredientConfig {
-                            ing: Image::LettuceLeaf,
-                            chance: 1.0,
-                            price: 8,
-                        },
-                        OrderIngredientConfig {
-                            ing: Image::TomatoSlice,
-                            chance: 1.0,
-                            price: 10,
-                        },
+                        oic(Image::LettuceLeaf, 1.0, 8),
+                        oic(Image::TomatoSlice, 1.0, 10),
                     ],
                     weight: 0.5,
                     depreciation_seconds: 5.0
                 },
                 OrderConfig { // Curry Crab
                     ings: vec![
-                        OrderIngredientConfig {
-                            ing: Image::CurryCrab,
-                            chance: 1.0,
-                            price: 30,
-                        },
-                        OrderIngredientConfig {
-                            ing: Image::Dumplings,
-                            chance: 1.0,
-                            price: 10,
-                        },
+                        oic(Image::CurryCrab, 1.0, 30),
+                        oic(Image::Dumplings, 1.0, 10),
                     ],
                     weight: 0.5,
                     depreciation_seconds: 8.0
-                }
+                },
+                OrderConfig { // Egg Sandwich
+                    ings: vec![
+                        oic(Image::BurgerBottom, 1.0, 5),
+                        oic(Image::EggsFried,    1.0, 7),
+                        oic(Image::BaconCooked,  0.3, 8),
+                        oic(Image::BurgerTop,    1.0, 5),
+                    ],
+                    weight: 1.0,
+                    depreciation_seconds: 8.0
+                },OrderConfig { // Bacon Sandwich
+                    ings: vec![
+                        oic(Image::BurgerBottom, 1.0, 5),
+                        oic(Image::BaconCooked,  1.0, 8),
+                        oic(Image::LettuceLeaf,  0.8, 3),
+                        oic(Image::TomatoSlice,  0.7, 4),
+                        oic(Image::BurgerTop,    1.0, 5),
+                    ],
+                    weight: 1.0,
+                    depreciation_seconds: 8.0
+                },
             ]
         }
     }
