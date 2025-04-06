@@ -2,8 +2,9 @@
 use crate::images::Image;
 use crate::ingredients::{MovableIngredient, IngredientStack};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BackgroundConfig, BaseGame, IngredientAreaConfig, TextConfig};
+use crate::traits::{BackgroundConfig, BaseGame, TextConfig};
 
+use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
@@ -12,20 +13,31 @@ extern "C" {
     fn log(s: &str);
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct IngredientAreaConfig {
+    pub pos: Pos2d,
+    pub grid_width: usize,
+    pub grid_item_width: f64,
+    pub grid_item_height: f64,
+    pub ingredients: Vec<Image>,
+    pub bg: BackgroundConfig,
+    pub text: TextConfig,
+}
+
 pub struct IngredientArea {
     ingredients: Vec<IngredientStack>,
     pos: Interpolable<Pos2d>,
 }
 
 impl IngredientArea {
-    pub fn new(game: &dyn BaseGame) -> Self {
+    pub fn new(game: &dyn BaseGame, cfg: &IngredientAreaConfig) -> Self {
         
         let mut ret = IngredientArea {
             ingredients: Vec::new(),
-            pos: Interpolable::new(game.config().ingredient_area.pos, 1000.0),
+            pos: Interpolable::new(cfg.pos, 1000.0),
         };
 
-        ret.update_config(game);
+        ret.update_config(game, cfg);
 
         ret
     }
@@ -38,8 +50,7 @@ impl IngredientArea {
         }
     }
 
-    pub fn draw(&self, game: &dyn BaseGame) {
-        let cfg = &game.config().ingredient_area;
+    pub fn draw(&self, game: &dyn BaseGame, cfg: &IngredientAreaConfig) {
         game.draw_area_background(&self.pos.cur(), &cfg.bg);
 
         for ing in self.ingredients.iter() {
@@ -59,8 +70,7 @@ impl IngredientArea {
         }
     }
 
-    pub fn update_config(&mut self, game: &dyn BaseGame) {
-        let cfg = &game.config().ingredient_area;
+    pub fn update_config(&mut self, game: &dyn BaseGame, cfg: &IngredientAreaConfig) {
         self.pos.set_end(cfg.pos);
 
         self.ingredients.clear();

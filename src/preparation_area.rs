@@ -2,14 +2,39 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BackgroundConfig, BaseGame, PreparationAreaConfig, ProgressBarConfig, TextConfig, CookerConfig, CookingRecipe};
+use crate::traits::{BackgroundConfig, BaseGame, ProgressBarConfig, TextConfig};
 
+use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CookingRecipe {
+    pub inputs: Vec<Image>,
+    pub outputs: Vec<Image>,
+    pub cook_time: f64,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CookerConfig {
+    pub recipes: Vec<CookingRecipe>,
+    pub base_image: Image,
+    pub base_offset: Pos2d,
+    pub instances: Vec<Pos2d>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PreparationAreaConfig {
+    pub pos: Pos2d,
+    pub cookers: Vec<CookerConfig>,
+    pub bg: BackgroundConfig,
+    pub text: TextConfig,
+    pub progress: ProgressBarConfig,
 }
 
 struct PreparationAreaStack {
@@ -193,8 +218,7 @@ pub struct PreparationArea {
 }
 
 impl PreparationArea {
-    pub fn new(game: &dyn BaseGame) -> Self {
-        let cfg = &game.config().preparation_area;
+    pub fn new(game: &dyn BaseGame, cfg: &PreparationAreaConfig) -> Self {
         let pos = Interpolable::new(cfg.pos, 1000.0);
 
         let mut cookers = Vec::new();
@@ -222,8 +246,8 @@ impl PreparationArea {
         self.pos.advance(game.elapsed_time());
     }
 
-    pub fn handle_command(&mut self, keywords: &Vec<&str>, selected_ings: &mut Vec<MovableIngredient>, game:&dyn BaseGame) -> bool {
-        for (cooker_type, cfg) in self.cookers.iter_mut().zip(game.config().preparation_area.cookers.iter()) {
+    pub fn handle_command(&mut self, keywords: &Vec<&str>, selected_ings: &mut Vec<MovableIngredient>, game:&dyn BaseGame, cfg: &PreparationAreaConfig) -> bool {
+        for (cooker_type, cfg) in self.cookers.iter_mut().zip(cfg.cookers.iter()) {
             for cooker in cooker_type.iter_mut() {
                 for keyword in keywords.iter() {
                     if cooker.check_keyword(*keyword, selected_ings, cfg, game) {        
@@ -236,19 +260,17 @@ impl PreparationArea {
         return false;
     }
 
-    pub fn draw(&self, game: &dyn BaseGame) {
-        game.draw_area_background(&self.pos.cur(), &game.config().preparation_area.bg);
+    pub fn draw(&self, game: &dyn BaseGame, cfg: &PreparationAreaConfig) {
+        game.draw_area_background(&self.pos.cur(), &cfg.bg);
 
-        for (cooker_type, _cfg) in self.cookers.iter().zip(game.config().preparation_area.cookers.iter()) {
+        for (cooker_type, _cfg) in self.cookers.iter().zip(cfg.cookers.iter()) {
             for cooker in cooker_type.iter() {
-                cooker.draw(game, &game.config().preparation_area.text, &game.config().preparation_area.progress);
+                cooker.draw(game, &cfg.text, &cfg.progress);
             }
         }
     }
 
-    pub fn update_config(&mut self, game: &dyn BaseGame) {
-        let cfg = &game.config().preparation_area;
-
+    pub fn update_config(&mut self, game: &dyn BaseGame, cfg: &PreparationAreaConfig) {
         self.pos.set_end(cfg.pos);
 
         // Remove excess cookers

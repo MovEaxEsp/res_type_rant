@@ -2,17 +2,44 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BaseGame, OrderBarConfig, OrderConfig, OrderIngredientConfig, BackgroundConfig, TextConfig, ProgressBarConfig};
+use crate::traits::{BaseGame, BackgroundConfig, TextConfig, ProgressBarConfig};
+
+use serde::{Serialize,Deserialize};
+use wasm_bindgen::prelude::*;
 
 use std::rc::Rc;
 use std::usize::MAX;
-
-use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OrderIngredientConfig {
+    pub ing: Image,
+    pub chance: f64,
+    pub price: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OrderConfig {
+    pub ings: Vec<OrderIngredientConfig>,
+    pub weight: f64, // how likely this order is to be chosen
+    pub depreciation_seconds: f64, // seconds until order price is reduced
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OrderBarConfig {
+    pub pos: Pos2d,
+    pub order_margin: f64,
+    pub bg: BackgroundConfig,
+    pub text_price: TextConfig,
+    pub text_keyword: TextConfig,
+    pub text_remaining: TextConfig,
+    pub progress_bar: ProgressBarConfig,
+    pub orders: Vec<OrderConfig>,
 }
 
 #[derive(PartialEq)]
@@ -110,9 +137,9 @@ impl OrderBar {
         }
     }
 
-    pub fn think(&mut self, game: &dyn BaseGame) {
+    pub fn think(&mut self, game: &dyn BaseGame, cfg: &OrderBarConfig) {
         if self.new_item_timer.advance(game.elapsed_time()) {
-            self.create_order(game);
+            self.create_order(game, cfg);
         }
 
         self.pos.advance(game.elapsed_time());
@@ -166,9 +193,7 @@ impl OrderBar {
         false
     }
 
-    pub fn draw(&self, game: &dyn BaseGame) {
-        let cfg = &game.config().order_bar;
-
+    pub fn draw(&self, game: &dyn BaseGame, cfg: &OrderBarConfig) {
         game.draw_area_background(&self.pos.cur(), &cfg.bg);
 
         for i in 0..self.orders.len() {
@@ -180,16 +205,14 @@ impl OrderBar {
     }
 
     /// Create a new order in the OrderBar
-    pub fn create_order(&mut self, game: &dyn BaseGame) {
+    pub fn create_order(&mut self, game: &dyn BaseGame, cfg: &OrderBarConfig) {
         if self.orders_remaining == 0 {
             return;
         }
         self.orders_remaining -= 1;
         
-        let cfg = &game.config().order_bar;
-
         // Figure out which order to make from the config
-        let orders = &game.config().order_bar.orders;
+        let orders = &cfg.orders;
         let total_weight: f64 = orders.iter().map(|e| e.weight).sum();
         let mut order_selector = js_sys::Math::random() * (total_weight as f64);
         let mut order_to_make = &orders[0];

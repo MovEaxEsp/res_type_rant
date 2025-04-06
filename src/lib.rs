@@ -7,13 +7,14 @@ mod preparation_area;
 mod traits;
 mod utils;
 
-use images::{Image, Images};
-use ingredient_area::IngredientArea;
+use images::{Image, Images, ImagesConfig};
+use ingredient_area::{IngredientArea, IngredientAreaConfig};
 use ingredients::MovableIngredient;
 use interpolable::{Pos2d, Interpolable};
-use order_bar::OrderBar;
-use preparation_area::PreparationArea;
-use traits::{BackgroundConfig, BaseGame, GameConfig, MoneyConfig, ProgressBarConfig, TextConfig};
+use order_bar::{OrderBar, OrderBarConfig};
+use preparation_area::{PreparationArea, PreparationAreaConfig};
+use serde::{Serialize,Deserialize};
+use traits::{BackgroundConfig, BaseGame, MoneyConfig, ProgressBarConfig, TextConfig};
 use utils::{set_panic_hook, WordBank};
 
 use wasm_bindgen::prelude::*;
@@ -28,6 +29,16 @@ use web_time::Instant;
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
     fn log(s: &str);
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GameConfig {
+    pub word_level: i32,
+    pub images: ImagesConfig,
+    pub order_bar: OrderBarConfig,
+    pub ingredient_area: IngredientAreaConfig,
+    pub preparation_area: PreparationAreaConfig,
+    pub money: MoneyConfig,
 }
 
 ///////// GameState
@@ -202,9 +213,11 @@ impl BaseGame for GameImp {
         self.canvas.set_global_alpha(1.0);
     }
 
+    /*
     fn config<'a>(&'a self) -> &'a GameConfig {
         &self.config
     } 
+    */
 
     fn images<'a>(&'a self) -> &'a Images {
         &self.images
@@ -252,7 +265,7 @@ struct GameState {
 impl GameState {
     fn think(&mut self) {
         self.imp.think();
-        self.order_bar.think(&self.imp);
+        self.order_bar.think(&self.imp, &self.imp.config.order_bar);
         self.ingredient_area.think(&self.imp);
         self.preparation_area.think(&self.imp);
     }
@@ -262,9 +275,9 @@ impl GameState {
         self.imp.canvas.clear_rect(0.0, 0.0, 2560.0, 1440.0);
         self.imp.canvas.fill_rect(0.0, 0.0, 2560.0, 1440.0);
 
-        self.order_bar.draw(&self.imp);
-        self.ingredient_area.draw(&self.imp);
-        self.preparation_area.draw(&self.imp);
+        self.order_bar.draw(&self.imp, &self.imp.config.order_bar);
+        self.ingredient_area.draw(&self.imp, &self.imp.config.ingredient_area);
+        self.preparation_area.draw(&self.imp, &self.imp.config.preparation_area);
     
         // Draw current input
         self.imp.canvas.set_fill_style_str("yellow");
@@ -301,7 +314,7 @@ impl GameState {
             &mut selected_ings,
             &self.imp);
 
-        let handled = self.preparation_area.handle_command(&keywords, &mut selected_ings, &self.imp);
+        let handled = self.preparation_area.handle_command(&keywords, &mut selected_ings, &self.imp, &self.imp.config.preparation_area);
         if !handled {
             self.order_bar.handle_command(&keywords, &mut selected_ings, &self.imp);
         }
@@ -331,8 +344,8 @@ impl GameState {
         self.imp.config = cfg.clone();
         self.imp.images.update_config(&cfg.images);
         self.order_bar.update_config(&cfg.order_bar, &self.imp);
-        self.ingredient_area.update_config(&self.imp);
-        self.preparation_area.update_config(&self.imp);
+        self.ingredient_area.update_config(&self.imp, &self.imp.config.ingredient_area);
+        self.preparation_area.update_config(&self.imp, &self.imp.config.preparation_area);
     }
 
 }
@@ -372,9 +385,9 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         keyword_b: Interpolable::new(219.0, 231.0),
     };
 
-    let preparation_area = PreparationArea::new(&game_imp);
+    let preparation_area = PreparationArea::new(&game_imp, &game_imp.config.preparation_area);
 
-    let ingredient_area= IngredientArea::new(&game_imp);
+    let ingredient_area= IngredientArea::new(&game_imp, &game_imp.config.ingredient_area);
 
     let state = GameState{
         screen_canvas: screen_canvas,
