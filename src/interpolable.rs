@@ -3,6 +3,8 @@ use std::cell::RefCell;
 use std::fmt;
 use std::rc::Rc;
 
+use serde::{Serialize,Deserialize};
+
 pub trait Advanceable<T> {
     fn advance(&mut self, end: T, speed: f64, elapsed_time: f64);
 }
@@ -30,42 +32,42 @@ impl Advanceable<f64> for f64 {
     }
 }
 
-#[derive(Clone, Copy, PartialEq)]
+#[derive(Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct Pos2d {
-    pub xpos: f64,
-    pub ypos: f64,
+    pub x: f64,
+    pub y: f64,
 }
 
 impl fmt::Debug for Pos2d {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "({},{})", self.xpos, self.ypos)
+        write!(f, "({},{})", self.x, self.y)
     }
 }
 
 impl Pos2d {
     pub fn new(xpos: f64, ypos: f64) -> Self {
-        Pos2d{xpos: xpos, ypos: ypos}
+        Pos2d{x: xpos, y: ypos}
     }
 }
 
 impl std::ops::Add<Pos2d> for Pos2d {
     type Output = Pos2d;
     fn add(self, rhs: Pos2d) -> Pos2d {
-        Pos2d::new(self.xpos + rhs.xpos, self.ypos + rhs.ypos)
+        Pos2d::new(self.x + rhs.x, self.y + rhs.y)
     }
 }
 
 impl std::ops::Sub<Pos2d> for Pos2d {
     type Output = Pos2d;
     fn sub(self, rhs: Pos2d) -> Pos2d {
-        Pos2d::new(self.xpos - rhs.xpos, self.ypos - rhs.ypos)
+        Pos2d::new(self.x - rhs.x, self.y - rhs.y)
     }
 }
 
 impl Advanceable<Pos2d> for Pos2d {
     fn advance(self:&mut Pos2d, end: Pos2d, speed: f64, elapsed_time: f64) {
-        let x_diff = end.xpos - self.xpos;
-        let y_diff = end.ypos - self.ypos;
+        let x_diff = end.x - self.x;
+        let y_diff = end.y - self.y;
         let dist = ((x_diff.powf(2.0) + y_diff).powf(2.0)).sqrt();
         let move_amt = speed*elapsed_time;
 
@@ -76,20 +78,28 @@ impl Advanceable<Pos2d> for Pos2d {
             let x_prop = x_diff.abs() / (x_diff.abs() + y_diff.abs());
             let x_move_amt = f64::min(x_diff.abs(), move_amt * x_prop);
             if x_diff < 0.0 {
-                self.xpos -= x_move_amt;
+                self.x -= x_move_amt;
             }
             else if x_diff > 0.0 {
-                self.xpos += x_move_amt;
+                self.x += x_move_amt;
             }
 
             let y_move_amt = f64::min(y_diff.abs(), move_amt * (1.0-x_prop));
             if y_diff < 0.0 {
-                self.ypos -= y_move_amt;
+                self.y -= y_move_amt;
             }
             else if y_diff > 0.0 {
-                self.ypos += y_move_amt;
+                self.y += y_move_amt;
             }
         }
+    }
+}
+
+impl<X, Y> From<(X, Y)> for Pos2d 
+where X: Into<f64>, Y: Into<f64>
+{
+    fn from(item: (X, Y)) -> Self {
+        Pos2d { x: Into::into(item.0), y: Into::into(item.1) }
     }
 }
 
@@ -194,6 +204,10 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
         return self.imp.borrow().calc_cur();
     }
 
+    pub fn speed(&self) -> f64 {
+        return self.imp.borrow().speed;
+    }
+
     pub fn base(&self) -> Option<Interpolable<T>> {
         match &(*self.imp.borrow()).base {
             Some(b) => Some(Interpolable::<T> {imp: b.clone()}),
@@ -229,11 +243,9 @@ where T: Clone + Copy + PartialEq + Advanceable<T> + std::ops::Add<Output = T> +
         self.imp.borrow_mut().end = end;
     }
 
-    /*
     pub fn set_speed(&self, speed: f64) {
         self.imp.borrow_mut().speed = speed;
     }
-    */
 }
 
 impl<T> fmt::Debug for Interpolable<T>

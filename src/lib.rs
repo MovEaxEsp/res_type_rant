@@ -1,3 +1,4 @@
+mod images;
 mod ingredients;
 mod ingredient_area;
 mod interpolable;
@@ -6,21 +7,20 @@ mod preparation_area;
 mod traits;
 mod utils;
 
+use images::{Image, Images};
 use ingredient_area::IngredientArea;
 use ingredients::MovableIngredient;
 use interpolable::{Pos2d, Interpolable};
 use order_bar::OrderBar;
 use preparation_area::PreparationArea;
-use traits::{BackgroundConfig, BaseGame, GameConfig, Image, ImageProps, IngredientAreaConfig, OrderBarConfig, PreparationAreaConfig,
-             PreparationAreaStackConfig, TextConfig, ProgressBarConfig, MoneyConfig};
+use traits::{BackgroundConfig, BaseGame, GameConfig, MoneyConfig, ProgressBarConfig, TextConfig};
 use utils::{set_panic_hook, WordBank};
 
 use wasm_bindgen::prelude::*;
-use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, HtmlImageElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
+use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 use js_sys::JsString;
 use core::f64;
 use std::cell::RefCell;
-use std::collections::HashMap;
 use std::rc::Rc;
 use web_time::Instant;
 
@@ -34,7 +34,7 @@ extern "C" {
 struct GameImp {
     canvas: OffscreenCanvasRenderingContext2d,
     cur_money: RefCell<i32>,
-    images: HashMap<Image, ImageProps>,
+    images: Images,
     words_bank: WordBank,
     config: GameConfig,
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
@@ -55,38 +55,11 @@ impl BaseGame for GameImp {
     }
 
     fn draw_image(&self, image: &Image, pos: &Pos2d) {
-
-        let props = self.images.get(image).unwrap();
-
-        self.canvas.draw_image_with_html_image_element_and_dw_and_dh(
-            &props.image,
-            pos.xpos,
-            pos.ypos,
-            props.width,
-            props.height,
-        )
-        .expect("draw");
+        self.images.draw_image(&self.canvas, image, pos.x, pos.y);
     }
 
     fn draw_gray_image(&self, image: &Image, pos: &Pos2d) {
-
-        if self.config.draw_gray {
-            let props = self.images.get(image).unwrap();
-
-            self.canvas.draw_image_with_offscreen_canvas(
-                &props.gray_image,
-                pos.xpos,
-                pos.ypos)
-            .expect("draw gray");
-        }
-    }
-
-    fn draw_border(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
-        self.canvas.set_stroke_style_str("red");
-        self.canvas.begin_path();
-        self.canvas.rect(xpos, ypos,width, height);
-        self.canvas.close_path();
-        self.canvas.stroke();
+        self.images.draw_gray_image(&self.canvas, image, pos.x, pos.y);
     }
 
     fn draw_area_background(&self, pos: &Pos2d, cfg: &BackgroundConfig) {
@@ -100,8 +73,8 @@ impl BaseGame for GameImp {
         c.set_global_alpha(cfg.bg_alpha);
         c.begin_path();
         c.round_rect_with_f64(
-            pos.xpos + cfg.x_off,
-            pos.ypos + cfg.y_off,
+            pos.x + cfg.offset.x,
+            pos.y + cfg.offset.y,
             cfg.width,
             cfg.height,
             cfg.corner_radius).expect("bg");
@@ -111,8 +84,8 @@ impl BaseGame for GameImp {
         c.set_global_alpha(cfg.border_alpha);
         c.begin_path();
         c.round_rect_with_f64(
-            pos.xpos + cfg.x_off,
-            pos.ypos + cfg.y_off,
+            pos.x + cfg.offset.x,
+            pos.y + cfg.offset.y,
             cfg.width,
             cfg.height,
             cfg.corner_radius).expect("border");
@@ -129,8 +102,8 @@ impl BaseGame for GameImp {
         self.canvas.set_fill_style_str(&cfg.done_style);
         self.canvas.begin_path();
         self.canvas.round_rect_with_f64(
-            pos.xpos + cfg.bg.x_off,
-            pos.ypos + cfg.bg.y_off,
+            pos.x + cfg.bg.offset.x,
+            pos.y + cfg.bg.offset.y,
             cfg.bg.width * pct,
             cfg.bg.height,
             cfg.bg.corner_radius).expect("progress");
@@ -139,6 +112,7 @@ impl BaseGame for GameImp {
         self.canvas.set_global_alpha(1.0);
     }
 
+    /*
     fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
         let middle_x = xpos + width/2.0;
         let middle_y = (ypos + height/2.0) * 2.0;
@@ -153,19 +127,33 @@ impl BaseGame for GameImp {
         self.canvas.fill();
         self.canvas.reset_transform().unwrap();
     }
+    */
 
-    fn draw_text(&self, text: &String, pos: &Pos2d, cfg: &TextConfig) {
+    fn draw_text(&self, text: &String, pos: &Pos2d, width: f64, cfg: &TextConfig) {
         let mut font_size: usize = cfg.size as usize;
-        if cfg.scale_text && text.len() > 3 {
-            font_size -= (text.len() - 3) * 3;
-        }
 
         self.canvas.set_global_alpha(cfg.alpha);
-
-        let draw_pos = *pos + Pos2d::new(cfg.x_off, cfg.y_off);
-
         self.canvas.set_fill_style_str(&cfg.style);
         self.canvas.set_stroke_style_str(&cfg.style);
+        self.canvas.set_text_baseline("top");
+
+        let mut draw_pos = *pos;
+        if cfg.center_and_fit {
+            // Figure out where to draw the text, and at what size
+
+            font_size += 1;
+            let mut text_width = width + 1.0;
+            while text_width > width {
+                font_size -= 1;
+                self.canvas.set_font(&format!("{}px {}", font_size, cfg.font));
+                text_width = self.canvas.measure_text(text).expect("measure text").width();
+            }
+
+            // Senter horizontally
+            draw_pos = draw_pos + ((width-text_width)/2.0, 0).into();
+        }
+
+        draw_pos = draw_pos + cfg.offset;
 
         let draw_fn: Box<dyn Fn(&str, f64, f64)>;
         if cfg.stroke {
@@ -185,7 +173,7 @@ impl BaseGame for GameImp {
                 self.canvas.set_fill_style_str(
                     &format!("rgb({},{},{})", self.keyword_r.cur() as i32, self.keyword_g.cur() as i32, self.keyword_b.cur() as i32));
                 self.canvas.set_font(&format!("bold {}px {}", font_size, cfg.font));
-                draw_fn(text, draw_pos.xpos, draw_pos.ypos);
+                draw_fn(text, draw_pos.x, draw_pos.y);
                 drawn = true;
             }
             else if !self.entered_keywords.is_empty() &&
@@ -194,21 +182,21 @@ impl BaseGame for GameImp {
                 let last_keyword = self.entered_keywords.last().unwrap();
                 // Underline the matching part of the word
                 self.canvas.set_font(&format!("italic {}px {}", font_size, cfg.font));
-                draw_fn(last_keyword, draw_pos.xpos, draw_pos.ypos);
+                draw_fn(last_keyword, draw_pos.x, draw_pos.y);
 
                 let underlined_width = self.canvas.measure_text(last_keyword).expect("measure text");
                 //let new_x = draw_pos.xpos + underlined_width.actual_bounding_box_left() + underlined_width.actual_bounding_box_right();
-                let new_x = draw_pos.xpos + underlined_width.width();
+                let new_x = draw_pos.x + underlined_width.width();
 
                 self.canvas.set_font(&format!("{}px {}", font_size, cfg.font));
-                draw_fn(&text[last_keyword.len()..], new_x, draw_pos.ypos);
+                draw_fn(&text[last_keyword.len()..], new_x, draw_pos.y);
                 drawn = true;
             }
         }
 
         if !drawn {
             self.canvas.set_font(&format!("{}px {}", font_size, cfg.font));
-            draw_fn(text, draw_pos.xpos, draw_pos.ypos);
+            draw_fn(text, draw_pos.x, draw_pos.y);
         }
 
         self.canvas.set_global_alpha(1.0);
@@ -218,8 +206,8 @@ impl BaseGame for GameImp {
         &self.config
     } 
 
-    fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps {
-        &self.images[image]
+    fn images<'a>(&'a self) -> &'a Images {
+        &self.images
     }
 
     fn word_bank<'a>(&'a self) -> &'a WordBank {
@@ -284,9 +272,9 @@ impl GameState {
         self.imp.canvas.fill_text(&self.imp.entered_text, 20.0, 1300.0).expect("text");
 
         // Draw current money
-        let money_pos = Pos2d::new(self.imp.config.money.xpos, self.imp.config.money.ypos);
+        let money_pos = self.imp.config.money.pos;
         self.imp.draw_area_background(&money_pos, &self.imp.config.money.bg);
-        self.imp.draw_text(&format!("$ {}", *self.imp.cur_money.borrow()), &money_pos, &self.imp.config.money.text);
+        self.imp.draw_text(&format!("$ {}", *self.imp.cur_money.borrow()), &money_pos, self.imp.config.money.bg.width, &self.imp.config.money.text);
 
         let screen_context = self.screen_canvas
         .get_context("2d").unwrap().unwrap()
@@ -340,10 +328,11 @@ impl GameState {
     }
 
     fn update_config(&mut self, cfg: &GameConfig) {
-        self.order_bar.update_config(&cfg.order_bar);
-        self.ingredient_area.update_config(&cfg.ingredient_area);
-        self.preparation_area.update_config(&cfg.preparation_area);
         self.imp.config = cfg.clone();
+        self.imp.images.update_config(&cfg.images);
+        self.order_bar.update_config(&cfg.order_bar, &self.imp);
+        self.ingredient_area.update_config(&self.imp);
+        self.preparation_area.update_config(&self.imp);
     }
 
 }
@@ -352,70 +341,9 @@ static mut S_STATE: Option<Rc<RefCell<GameState>>> = None;
 
 #[wasm_bindgen]
 pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: JsValue, bad_words_db: JsValue) {
-
     set_panic_hook();
     
     let game_config: GameConfig = serde_wasm_bindgen::from_value(config).unwrap();
-
-    let mut image_map: HashMap<Image, HtmlImageElement> = HashMap::new();
-
-    let image_names = HashMap::from([
-        (Image::Plate, "plate.png"),
-        (Image::Pan, "pan.png"),
-        (Image::BurgerTop, "burger_top.png"),
-        (Image::BurgerBottom, "burger_bottom.png"),
-        (Image::LettuceLeaf, "lettuce_leaf.png"),
-        (Image::TomatoSlice, "tomato_slice.png"),
-        (Image::RawPatty, "raw_patty.png"),
-        (Image::CookedPatty, "cooked_patty.png"),
-    ]);
-
-    for (imgtype, imgname) in image_names {
-        let imgjs = js_sys::Reflect::get(&images, &imgname.into()).expect(imgname);
-        let htmlimg = imgjs.dyn_into::<HtmlImageElement>().expect(imgname);
-        image_map.insert(imgtype, htmlimg);
-    }
-
-    let mut image_def = |image: Image, width: f64, height: f64, cooked_image: Option<Image>| {
-
-        let html_img = image_map.remove(&image).unwrap();
-
-        let gray_canvas = OffscreenCanvas::new(width as u32, height as u32).expect("gray canvas");
-        let gray_context = gray_canvas.get_context("2d").unwrap().unwrap()
-                            .dyn_into::<OffscreenCanvasRenderingContext2d>().unwrap();
-
-        gray_context.set_filter("grayscale(1.0)");
-        gray_context.draw_image_with_html_image_element_and_dw_and_dh(
-            &html_img,
-            0.0,
-            0.0,
-            width,
-            height)
-        .expect("draw");
-
-        let ret = (image,
-         ImageProps{
-            image: html_img,
-            width: width,
-            height: height,
-            cooked_image: cooked_image,
-            gray_image: gray_canvas,
-         });
-
-
-        return ret;
-    };
-
-    let state_images = HashMap::from([
-        image_def(Image::Plate, 100.0, 30.0, None),
-        image_def(Image::Pan, 200.0, 30.0, None),
-        image_def(Image::BurgerTop, 100.0, 30.0, None),
-        image_def(Image::BurgerBottom, 100.0, 30.0, None),
-        image_def(Image::LettuceLeaf, 100.0, 30.0, None),
-        image_def(Image::TomatoSlice, 100.0, 30.0, None),
-        image_def(Image::RawPatty, 100.0, 30.0, Some(Image::CookedPatty)),
-        image_def(Image::CookedPatty, 100.0, 30.0, None),
-    ]);
 
     let order_bar = OrderBar::new(&game_config.order_bar);
 
@@ -424,19 +352,29 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         &bad_words_db.dyn_into::<JsString>().expect("badWords").into(),
         game_config.word_level as usize);
 
-        
-    let ingredient_area= IngredientArea::new(
-        vec![Image::BurgerBottom, Image::BurgerTop, Image::RawPatty, Image::LettuceLeaf, Image::TomatoSlice],
-        &words_bank,
-        &game_config.ingredient_area);
-
     let offscreen_canvas = OffscreenCanvas::new(2560, 1440).expect("offscreen canvas");
     let offscreen_context = offscreen_canvas.get_context("2d").unwrap().unwrap()
                         .dyn_into::<OffscreenCanvasRenderingContext2d>().unwrap();
 
     let screen_canvas= canvas.dyn_into::<HtmlCanvasElement>().expect("canvas");
 
-    let preparation_area = PreparationArea::new(&words_bank, &game_config.preparation_area);
+    let game_imp = GameImp {
+        canvas: offscreen_context,
+        images: Images::new(images, &game_config.images),
+        cur_money: RefCell::new(0),
+        words_bank: words_bank,
+        config: game_config,
+        elapsed_time: 0.0, 
+        entered_text: String::new(),
+        entered_keywords: Vec::new(),
+        keyword_r: Interpolable::new(72.0, 111.0),
+        keyword_g: Interpolable::new(23.0, 79.0),
+        keyword_b: Interpolable::new(219.0, 231.0),
+    };
+
+    let preparation_area = PreparationArea::new(&game_imp);
+
+    let ingredient_area= IngredientArea::new(&game_imp);
 
     let state = GameState{
         screen_canvas: screen_canvas,
@@ -445,19 +383,7 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
         ingredient_area: ingredient_area,
         preparation_area: preparation_area,
         frame_start: Instant::now(),
-        imp: GameImp {
-            canvas: offscreen_context,
-            images: state_images,
-            cur_money: RefCell::new(0),
-            words_bank: words_bank,
-            config: game_config,
-            elapsed_time: 0.0, 
-            entered_text: String::new(),
-            entered_keywords: Vec::new(),
-            keyword_r: Interpolable::new(72.0, 111.0),
-            keyword_g: Interpolable::new(23.0, 79.0),
-            keyword_b: Interpolable::new(219.0, 231.0),
-        }
+        imp: game_imp,
     };
 
     unsafe {
@@ -499,151 +425,14 @@ pub fn report_keypress(key: &str) {
 pub fn default_config() -> JsValue {
     let cfg = GameConfig {
         word_level: 0,
-        draw_borders: false,
-        draw_gray: true,
-        order_bar: OrderBarConfig {
-            xpos: 1700.0,
-            ypos: 150.0,
-            depreciation_seconds: 10.0,
-            bg: BackgroundConfig {
-                x_off: -50.0,
-                y_off: -90.0,
-                width: 740.0,
-                height: 400.0,
-                corner_radius: 30.0,
-                border_style: "black".to_string(),
-                border_alpha: 1.0,
-                border_width: 5.0,
-                bg_style: "pink".to_string(),
-                bg_alpha: 0.2
-            },
-            text_price: TextConfig {
-                x_off: 0.0,
-                y_off: 210.0,
-                stroke: false,
-                style: "yellow".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                scale_text: true,
-                alpha: 0.4,
-                is_command: false,
-            },
-            text_keyword: TextConfig {
-                x_off: 0.0,
-                y_off: 260.0,
-                stroke: false,
-                style: "yellow".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                scale_text: true,
-                alpha: 0.4,
-                is_command: true,
-            },
-            text_remaining: TextConfig {
-                x_off: 10.0,
-                y_off: -20.0,
-                stroke: false,
-                style: "white".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                scale_text: false,
-                alpha: 0.4,
-                is_command: false,
-            },
-            progress_bar: ProgressBarConfig {
-                bg: BackgroundConfig {
-                    x_off: 0.0,
-                    y_off: 160.0,
-                    width: 100.0,
-                    height: 5.0,
-                    corner_radius: 0.0,
-                    border_style: "black".to_string(),
-                    border_alpha: 0.0,
-                    border_width: 0.0,
-                    bg_style: "black".to_string(),
-                    bg_alpha: 0.4
-                },
-                done_alpha: 1.0,
-                done_style: "yellow".to_string(),
-            }
-        },
-        ingredient_area: IngredientAreaConfig {
-            xpos: 80.0,
-            ypos: 800.0,
-            grid_width: 5,
-            grid_item_width: 170.0,
-            grid_item_height: 80.0,
-            bg: BackgroundConfig {
-                x_off: -50.0,
-                y_off: -70.0,
-                width: 900.0,
-                height: 500.0,
-                corner_radius: 30.0,
-                border_style: "black".to_string(),
-                border_alpha: 0.3,
-                border_width: 5.0,
-                bg_style: "orange".to_string(),
-                bg_alpha: 0.2
-            },
-            text: TextConfig {
-                x_off: 0.0,
-                y_off: 80.0,
-                stroke: false,
-                style: "yellow".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                scale_text: true,
-                alpha: 0.4,
-                is_command: true,
-            }
-        },
-        preparation_area: PreparationAreaConfig {
-            xpos: 1500.0,
-            ypos: 600.0,
-            plate: PreparationAreaStackConfig {
-                xpos: 10.0,
-                ypos: 50.0,
-                base_x_off: 0.0,
-                base_y_off: 150.0,
-                cook_time: 0.0,
-            },
-            pan: PreparationAreaStackConfig {
-                xpos: 200.0,
-                ypos: 50.0,
-                base_x_off: -10.0,
-                base_y_off: 150.0,
-                cook_time: 3.0,
-            },
-            bg: BackgroundConfig {
-                x_off: -50.0,
-                y_off: -70.0,
-                width: 900.0,
-                height: 500.0,
-                corner_radius: 30.0,
-                border_style: "black".to_string(),
-                border_alpha: 0.3,
-                border_width: 5.0,
-                bg_style: "orange".to_string(),
-                bg_alpha: 0.2
-            },
-            text: TextConfig {
-                x_off: 0.0,
-                y_off: 220.0,
-                stroke: false,
-                style: "yellow".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                scale_text: true,
-                alpha: 0.4,
-                is_command: true,
-            }
-        },
+        images: Images::default_config(),
+        order_bar: OrderBar::default_config(),
+        ingredient_area: IngredientArea::default_config(),
+        preparation_area: PreparationArea::default_config(),
         money: MoneyConfig {
-            xpos: 50.0,
-            ypos: 50.0,
+            pos: (50, 50).into(),
             bg: BackgroundConfig {
-                x_off: 0.0,
-                y_off: -20.0,
+                offset: (0, -20).into(),
                 width: 400.0,
                 height: 250.0,
                 corner_radius: 30.0,
@@ -654,13 +443,12 @@ pub fn default_config() -> JsValue {
                 bg_alpha: 0.2
             },
             text: TextConfig {
-                x_off: 40.0,
-                y_off: 150.0,
+                offset: (40, 40).into(),
                 stroke: true,
                 style: "gold".to_string(),
                 font: "comic sans".to_string(),
                 size: 128,
-                scale_text: false,
+                center_and_fit: false,
                 alpha: 1.0,
                 is_command: false,
             }
@@ -672,10 +460,17 @@ pub fn default_config() -> JsValue {
 
 #[wasm_bindgen]
 pub fn update_config(config: JsValue) {
-    unsafe {
-        #[allow(static_mut_refs)]
-        let state: &Rc<RefCell<GameState>> = S_STATE.as_mut().unwrap();
-        state.borrow_mut().update_config(&serde_wasm_bindgen::from_value(config).unwrap());
+
+    match serde_wasm_bindgen::from_value::<GameConfig>(config) {
+        Ok(cfg) => {
+            unsafe {
+                #[allow(static_mut_refs)]
+                let state: &Rc<RefCell<GameState>> = S_STATE.as_mut().unwrap();
+                state.borrow_mut().update_config(&cfg);
+            }
+        }
+        Err(e) => {
+            log(&format!("Failed parsing config: {}", e));
+        }
     }
-    
 }

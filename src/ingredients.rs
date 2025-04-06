@@ -1,6 +1,9 @@
 
-use crate::traits::{BaseGame, Image, ProgressBarConfig, TextConfig};
+use crate::images::Image;
+use crate::traits::{BaseGame, ProgressBarConfig, TextConfig};
 use crate::interpolable::{Interpolable, Pos2d};
+
+use std::rc::Rc;
 
 use wasm_bindgen::prelude::*;
 
@@ -32,6 +35,16 @@ impl MovableIngredient {
         }
     }
     
+    // Create a deep clone of 'self' with a new Interpolable at the same position as 'self'
+    pub fn deep_clone(&self) -> MovableIngredient {
+        MovableIngredient {
+            image: self.image,
+            pos: Interpolable::new(self.pos.cur(), self.pos.speed()),
+            grayed_out: self.grayed_out,
+            incoming_ing: Box::new(None)
+        }
+    }
+
     fn think(&mut self, game: &dyn BaseGame) -> MovableIngredientThinkResult {
         let mut ret = MovableIngredientThinkResult {
             pos_done: false,
@@ -77,6 +90,7 @@ impl MovableIngredient {
 pub struct IngredientStackThinkResult {
     pub progress_done: bool,
     pub pos_done: bool,
+    pub ingredient_arrived: bool,
     pub all_ungrayed: bool,
 }
 
@@ -84,9 +98,9 @@ pub struct IngredientStackThinkResult {
 pub struct IngredientStack {
     pub ingredients: Vec<MovableIngredient>,
     pub pos: Interpolable<Pos2d>,
-    pub text: Option<String>,
+    pub text: Option<Rc<String>>,
     pub progress: Option<Interpolable<f64>>,
-    pub sub_text: Option<String>,
+    pub sub_text: Option<Rc<String>>,
 }
 
 impl IngredientStack {
@@ -100,14 +114,11 @@ impl IngredientStack {
         }
     }
 
-    pub fn height() -> f64 {
-        150.0
-    }
-
     pub fn think(&mut self, game: &dyn BaseGame) -> IngredientStackThinkResult {
         let mut ret = IngredientStackThinkResult {
             progress_done: false,
             pos_done: false,
+            ingredient_arrived: false,
             all_ungrayed: false
         };
 
@@ -119,6 +130,10 @@ impl IngredientStack {
             let ing_ret = item.think(game);
             if ing_ret.incoming_ing_done {
                 have_ungrayed = true;
+            }
+
+            if ing_ret.pos_done {
+                ret.ingredient_arrived = true;
             }
 
             if item.grayed_out {
@@ -137,42 +152,41 @@ impl IngredientStack {
         return ret;
     }
 
-    pub fn draw_stack(&self, game: &dyn BaseGame) {
+    pub fn draw(&self, game: &dyn BaseGame, progress_cfg: Option<&ProgressBarConfig>, text_cfg: Option<&TextConfig>, subtext_cfg: Option<&TextConfig>) {
         for item in self.ingredients.iter() {
             item.draw(game);
         }
-    }
 
-    pub fn draw_text(&self, game: &dyn BaseGame, cfg: &TextConfig) {
-        if let Some(text) = &self.text {
-            game.draw_text(&text, &self.pos.cur(), cfg);
-        }
-    }
-
-    pub fn draw_sub_text(&self, game: &dyn BaseGame, cfg: &TextConfig) {
-        if let Some(text) = &self.sub_text {
-            game.draw_text(&text, &self.pos.cur(), cfg);
-        }
-    }
-
-    pub fn draw_progress(&self, game: &dyn BaseGame, cfg: &ProgressBarConfig) {
-        if let Some(progress) = &self.progress {
+        let mut y_off = 0.0;
+        for (progress, cfg) in self.progress.iter().zip(progress_cfg.iter()) {
             if progress.is_moving() {
-                game.draw_progress_bar(&self.pos.cur(), progress.cur(), cfg);
+                let x_off = (self.width(game) - cfg.bg.width)/2.0;
+                game.draw_progress_bar(&(self.pos.cur() + (x_off, 0.0).into()), progress.cur(), cfg);
+                y_off += cfg.bg.height;
             }
         }
+
+        for (text, cfg) in self.text.iter().zip(text_cfg.iter()) {
+            game.draw_text(&text, &(self.pos.cur() + (0, y_off).into()), self.width(game), cfg);
+            // TODO figure out text height
+        }
+
+        for (text, cfg) in self.sub_text.iter().zip(subtext_cfg.iter()) {
+            game.draw_text(&text, &(self.pos.cur() + (0, y_off).into()), self.width(game), cfg);
+            // TODO figure out text height
+        }
     }
 
-    pub fn draw(&self, game: &dyn BaseGame, text_cfg: &TextConfig, progress_cfg: &ProgressBarConfig) {
-        self.draw_stack(game);
-        self.draw_text(game, text_cfg);
-        self.draw_progress(game, progress_cfg);
-    }
+    pub fn add_ingredient(&mut self, mut ingredient: MovableIngredient, immediate: bool, game: &dyn BaseGame) {
 
-    pub fn add_ingredient(&mut self, mut ingredient: MovableIngredient, immediate: bool) {
+        let cur_height: f64 = self.ingredients.iter().map(|ing| game.images().image_height(&ing.image)).sum();
+
+        // Account for padding between ingredients
+        //cur_height += 10.0 *self.ingredients.len() as f64;
+
         let end = Pos2d::new(
             0.0,
-            IngredientStack::height() - (((self.ingredients.len()+1) as f64) *35.0)
+            - cur_height - game.images().image_height(&ingredient.image)
         );
 
         ingredient.pos.rebase(Some(self.pos.clone()), end, immediate);
@@ -192,5 +206,16 @@ impl IngredientStack {
                 }
             }
         }
+    }
+
+    // Return the width of our stack of ingredients
+    pub fn width(&self, game: &dyn BaseGame) -> f64 {
+        let mut cur_max: f64 = 0.0;
+        let imgs = game.images();
+        for ing in self.ingredients.iter() {
+            cur_max = cur_max.max(imgs.image_width(&ing.image));
+        }
+
+        cur_max
     }
 }

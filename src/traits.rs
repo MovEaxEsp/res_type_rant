@@ -1,33 +1,26 @@
-use web_sys::{HtmlImageElement, OffscreenCanvas};
-
 use serde::{Serialize,Deserialize};
 
 use crate::{interpolable::Pos2d, utils::WordBank};
+use crate::images::{Image, Images, ImagesConfig};
 
-#[derive(PartialEq, Eq, Hash, Copy, Clone)]
-pub enum Image {
-    Plate,
-    Pan,
-    BurgerTop,
-    BurgerBottom,
-    LettuceLeaf,
-    TomatoSlice,
-    RawPatty,
-    CookedPatty,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CookingRecipe {
+    pub inputs: Vec<Image>,
+    pub outputs: Vec<Image>,
+    pub cook_time: f64,
 }
 
-pub struct ImageProps {
-    pub image: HtmlImageElement,
-    pub gray_image: OffscreenCanvas,
-    pub cooked_image: Option<Image>,
-    pub width: f64,
-    pub height: f64,
+#[derive(Serialize, Deserialize, Clone)]
+pub struct CookerConfig {
+    pub recipes: Vec<CookingRecipe>,
+    pub base_image: Image,
+    pub base_offset: Pos2d,
+    pub instances: Vec<Pos2d>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct BackgroundConfig {
-    pub x_off: f64,
-    pub y_off: f64,
+    pub offset: Pos2d,
     pub width: f64,
     pub height: f64,
     pub corner_radius: f64,
@@ -40,13 +33,12 @@ pub struct BackgroundConfig {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct TextConfig {
-    pub x_off: f64,
-    pub y_off: f64,
+    pub offset: Pos2d,
     pub stroke: bool,
     pub style: String,
     pub font: String,
     pub size: i32,
-    pub scale_text: bool,
+    pub center_and_fit: bool,
     pub is_command: bool,
     pub alpha: f64,
 }
@@ -59,51 +51,54 @@ pub struct ProgressBarConfig {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
+pub struct OrderIngredientConfig {
+    pub ing: Image,
+    pub chance: f64,
+    pub price: i32,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OrderConfig {
+    pub ings: Vec<OrderIngredientConfig>,
+    pub weight: f64, // how likely this order is to be chosen
+    pub depreciation_seconds: f64, // seconds until order price is reduced
+}
+
+#[derive(Serialize, Deserialize, Clone)]
 pub struct OrderBarConfig {
-    pub xpos: f64,
-    pub ypos: f64,
-    pub depreciation_seconds: f64,
+    pub pos: Pos2d,
+    pub order_margin: f64,
     pub bg: BackgroundConfig,
     pub text_price: TextConfig,
     pub text_keyword: TextConfig,
     pub text_remaining: TextConfig,
     pub progress_bar: ProgressBarConfig,
+    pub orders: Vec<OrderConfig>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct IngredientAreaConfig {
-    pub xpos: f64,
-    pub ypos: f64,
+    pub pos: Pos2d,
     pub grid_width: usize,
     pub grid_item_width: f64,
     pub grid_item_height: f64,
+    pub ingredients: Vec<Image>,
     pub bg: BackgroundConfig,
     pub text: TextConfig,
-}
-
-#[derive(Serialize, Deserialize, Clone)]
-pub struct PreparationAreaStackConfig {
-    pub xpos: f64,
-    pub ypos: f64,
-    pub base_x_off: f64,
-    pub base_y_off: f64,
-    pub cook_time: f64,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct PreparationAreaConfig {
-    pub xpos: f64,
-    pub ypos: f64,
-    pub plate: PreparationAreaStackConfig,
-    pub pan: PreparationAreaStackConfig,
+    pub pos: Pos2d,
+    pub cookers: Vec<CookerConfig>,
     pub bg: BackgroundConfig,
     pub text: TextConfig,
+    pub progress: ProgressBarConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MoneyConfig {
-    pub xpos: f64,
-    pub ypos: f64,
+    pub pos: Pos2d,
     pub bg: BackgroundConfig,
     pub text: TextConfig,
 }
@@ -111,12 +106,11 @@ pub struct MoneyConfig {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GameConfig {
     pub word_level: i32,
-    pub draw_borders: bool,
+    pub images: ImagesConfig,
     pub order_bar: OrderBarConfig,
     pub ingredient_area: IngredientAreaConfig,
     pub preparation_area: PreparationAreaConfig,
     pub money: MoneyConfig,
-    pub draw_gray: bool,
 }
 
 pub trait BaseGame {
@@ -126,15 +120,13 @@ pub trait BaseGame {
 
     fn draw_gray_image(&self, image: &Image, pos: &Pos2d);
 
-    fn draw_border(&self, xpos: f64, ypos: f64, width: f64, height: f64);
-
     fn draw_area_background(&self, pos: &Pos2d, cfg: &BackgroundConfig);
 
     fn draw_progress_bar(&self, pos: &Pos2d, pct: f64, cfg: &ProgressBarConfig);
 
-    fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64);
+    //fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64);
 
-    fn draw_text(&self, text: &String, pos: &Pos2d, cfg: &TextConfig);
+    fn draw_text(&self, text: &String, pos: &Pos2d, width: f64, cfg: &TextConfig);
 
     fn add_money(&self, amt: i32);
 
@@ -142,7 +134,9 @@ pub trait BaseGame {
 
     fn word_bank<'a>(&'a self) -> &'a WordBank;
 
-    fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps;
+    fn images<'a>(&'a self) -> &'a Images;
+
+    //fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps;
 
     fn elapsed_time(&self) -> f64;
 }

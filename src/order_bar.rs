@@ -1,7 +1,8 @@
+
+use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BaseGame, Image, OrderBarConfig};
-use crate::utils::WordBank;
+use crate::traits::{BaseGame, OrderBarConfig, OrderConfig, OrderIngredientConfig, BackgroundConfig, TextConfig, ProgressBarConfig};
 
 use std::rc::Rc;
 use std::usize::MAX;
@@ -27,7 +28,6 @@ struct OrderBarStackThinkRet {
 struct OrderBarStack {
     stack: IngredientStack,
     price: i32,
-    keyword: Rc<String>,
     state: OrderBarStackState,
 }
 
@@ -36,13 +36,12 @@ impl OrderBarStack {
         let mut stack = IngredientStack::new(pos);
 
         stack.progress = Some(Interpolable::new(0.0, 1.0/depreciation_seconds));
-        stack.text = Some(format!("$ {}", price));
-        stack.sub_text = Some(keyword.clone().to_string());
+        stack.text = Some(Rc::new(format!("$ {}", price)));
+        stack.sub_text = Some(keyword.clone());
 
         OrderBarStack {
             stack: stack,
             price: price,
-            keyword: keyword.clone(),
             state: OrderBarStackState::Normal,
         }
     }
@@ -86,7 +85,7 @@ impl OrderBarStack {
 
     fn set_price(&mut self, price: i32) {
         self.price = price;
-        self.stack.text = Some(format!("$ {}", self.price));
+        self.stack.text = Some(Rc::new(format!("$ {}", self.price)));
     } 
 }
 
@@ -96,7 +95,6 @@ pub struct OrderBar {
     orders_remaining: i32,
     pos: Interpolable<Pos2d>,
     new_item_timer: Interpolable<f64>,
-    cfg: OrderBarConfig,
 }
 
 impl OrderBar {
@@ -107,15 +105,14 @@ impl OrderBar {
         OrderBar {
             orders: Vec::new(),
             orders_remaining: 10,
-            pos: Interpolable::new(Pos2d::new(cfg.xpos, cfg.ypos), 1000.0),
+            pos: Interpolable::new(cfg.pos, 1000.0),
             new_item_timer: new_item_timer,
-            cfg: cfg.clone(),
         }
     }
 
     pub fn think(&mut self, game: &dyn BaseGame) {
         if self.new_item_timer.advance(game.elapsed_time()) {
-            self.create_order(game.word_bank());
+            self.create_order(game);
         }
 
         self.pos.advance(game.elapsed_time());
@@ -156,13 +153,13 @@ impl OrderBar {
     pub fn handle_command(&mut self, keywords: &Vec<&str>, selected_ings: &mut Vec<MovableIngredient>, _game:&dyn BaseGame) -> bool {
         for keyword in keywords.iter() {
             for my_order in self.orders.iter_mut() {
-                if *my_order.keyword != *keyword {
-                    continue;
+                if let Some(stack_word) = &my_order.stack.sub_text {
+                    if **stack_word == *keyword {
+                        // Found a matching order.  Send all matching ingredients to it
+                        my_order.stack.try_ungray_ingredients(selected_ings);
+                        return true;
+                    }
                 }
-
-                // Found a matching order.  Send all matching ingredients to it
-                my_order.stack.try_ungray_ingredients(selected_ings);
-                return true;
             }
         }
 
@@ -170,73 +167,72 @@ impl OrderBar {
     }
 
     pub fn draw(&self, game: &dyn BaseGame) {
-        game.draw_area_background(&self.pos.cur(), &self.cfg.bg);
+        let cfg = &game.config().order_bar;
+
+        game.draw_area_background(&self.pos.cur(), &cfg.bg);
 
         for i in 0..self.orders.len() {
             let order = &self.orders[i];
-            order.stack.draw(game, &self.cfg.text_price, &self.cfg.progress_bar);
-            order.stack.draw_sub_text(game, &self.cfg.text_keyword);
+            order.stack.draw(game, Some(&cfg.progress_bar), Some(&cfg.text_price), Some(&cfg.text_keyword));
         }
 
-        game.draw_text(&format!("Remaining: {}", self.orders_remaining), &self.pos.cur(), &self.cfg.text_remaining);
-
-        if game.config().draw_borders {
-            game.draw_border(self.pos.cur().xpos, self.pos.cur().ypos, 600.0, IngredientStack::height());
-        }
+        game.draw_text(&format!("Remaining: {}", self.orders_remaining), &self.pos.cur(), 1.0, &cfg.text_remaining);
     }
 
-    pub fn create_order(&mut self, word_bank: &WordBank) {
+    /// Create a new order in the OrderBar
+    pub fn create_order(&mut self, game: &dyn BaseGame) {
         if self.orders_remaining == 0 {
             return;
         }
         self.orders_remaining -= 1;
         
-        struct Ing {
-            image: Image,
-            chance: f64,
-        }
+        let cfg = &game.config().order_bar;
 
-        fn ing(image: Image, chance: f64) -> Ing {
-            Ing {
-                image: image,
-                chance: chance,
+        // Figure out which order to make from the config
+        let orders = &game.config().order_bar.orders;
+        let total_weight: f64 = orders.iter().map(|e| e.weight).sum();
+        let mut order_selector = js_sys::Math::random() * (total_weight as f64);
+        let mut order_to_make = &orders[0];
+
+        for order in orders.iter() {
+            order_selector -= order.weight;
+            if order_selector <= 0.0 {
+                order_to_make = order;
+                break;
             }
         }
-
-        type Order = Vec<Ing>;
-        let orders:Vec<Order> = vec![
-            vec![ing(Image::BurgerBottom, 1.0), ing(Image::CookedPatty, 1.0), ing(Image::LettuceLeaf, 0.5), ing(Image::TomatoSlice, 0.5), ing(Image::BurgerTop, 1.0)],
-        ];
-
-        let ord_idx = (js_sys::Math::random() * (orders.len() as f64)) as usize;
 
         let mut new_order = OrderBarStack::new(Interpolable::new_b(
             Pos2d::new(1000.0, 0.0),
             1000.0,
             &self.pos),
-            &word_bank.get_new_word(),
+            &game.word_bank().get_new_word(),
         0,
-        self.cfg.depreciation_seconds);
+        order_to_make.depreciation_seconds);
 
-        new_order.stack.pos.set_end(Pos2d::new(
-            20.0 + 120.0*self.orders.len() as f64,
-            0.0));
+        let mut xpos = cfg.order_margin;
+        for i in 0..self.orders.len() {
+            let order = &self.orders[i];
+            xpos += order.stack.width(game) + cfg.order_margin;
+        }
+
+        new_order.stack.pos.set_end((xpos, 0).into());
         
-        for ing in orders[ord_idx].iter() {
+        let mut price: i32 = 0;
+        for ing in order_to_make.ings.iter() {
             let ing_chance = js_sys::Math::random();
             if ing_chance > ing.chance {
                 continue;
             }
 
-            let mut ing = MovableIngredient::new(ing.image, Interpolable::new(Pos2d::new(0.0, 0.0), 1000.0));
-            ing.grayed_out = true;
+            let mut new_ing = MovableIngredient::new(ing.ing, Interpolable::new(Pos2d::new(0.0, 0.0), 1000.0));
+            new_ing.grayed_out = true;
+            price += ing.price;
 
-            new_order.stack.add_ingredient(ing, true);
+            new_order.stack.add_ingredient(new_ing, true, game);
         }
 
-        let price = (new_order.stack.ingredients.len()  * 6) as i32;
         new_order.set_price(price);
-
 
         self.orders.push(new_order);
 
@@ -245,8 +241,144 @@ impl OrderBar {
         }
     }
 
-    pub fn update_config(&mut self, cfg: &OrderBarConfig) {
-        self.pos.set_end(Pos2d::new(cfg.xpos, cfg.ypos));
-        self.cfg = cfg.clone();
+    /// Update our configuration
+    pub fn update_config(&mut self, cfg: &OrderBarConfig, game: &dyn BaseGame) {
+        self.pos.set_end(cfg.pos);
+
+        let mut xpos = cfg.order_margin;
+        for i in 0..self.orders.len() {
+            let order = &self.orders[i];
+            order.stack.pos.set_end((xpos, 0).into());
+            xpos += order.stack.width(game) + cfg.order_margin;
+        }
+    }
+
+    /// Return the default configuration for the OrderBar 
+    pub fn default_config() -> OrderBarConfig {
+        OrderBarConfig {
+            pos: (1200, 400).into(),
+            order_margin: 20.0,
+            bg: BackgroundConfig {
+                offset: (-50, -300).into(),
+                width: 1340.0,
+                height: 500.0,
+                corner_radius: 30.0,
+                border_style: "black".to_string(),
+                border_alpha: 1.0,
+                border_width: 5.0,
+                bg_style: "pink".to_string(),
+                bg_alpha: 0.2
+            },
+            text_price: TextConfig {
+                offset: (0, 40).into(),
+                stroke: false,
+                style: "yellow".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                center_and_fit: true,
+                alpha: 0.4,
+                is_command: false,
+            },
+            text_keyword: TextConfig {
+                offset: (0, 100).into(),
+                stroke: false,
+                style: "yellow".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                center_and_fit: true,
+                alpha: 0.4,
+                is_command: true,
+            },
+            text_remaining: TextConfig {
+                offset: (10, -270).into(),
+                stroke: false,
+                style: "white".to_string(),
+                font: "comic sans".to_string(),
+                size: 48,
+                center_and_fit: false,
+                alpha: 0.4,
+                is_command: false,
+            },
+            progress_bar: ProgressBarConfig {
+                bg: BackgroundConfig {
+                    offset: (0, 30).into(),
+                    width: 100.0,
+                    height: 5.0,
+                    corner_radius: 0.0,
+                    border_style: "black".to_string(),
+                    border_alpha: 0.0,
+                    border_width: 0.0,
+                    bg_style: "black".to_string(),
+                    bg_alpha: 0.4
+                },
+                done_alpha: 1.0,
+                done_style: "yellow".to_string(),
+            },
+            orders: vec![
+                OrderConfig { // Burger
+                    ings: vec![
+                        OrderIngredientConfig {
+                            ing: Image::BurgerBottom,
+                            chance: 1.0,
+                            price: 3,
+                        },
+                        OrderIngredientConfig {
+                            ing: Image::CookedPatty,
+                            chance: 1.0,
+                            price: 10,
+                        },
+                        OrderIngredientConfig {
+                            ing: Image::LettuceLeaf,
+                            chance: 0.7,
+                            price: 4,
+                        },
+                        OrderIngredientConfig {
+                            ing: Image::TomatoSlice,
+                            chance: 0.6,
+                            price: 5,
+                        },
+                        OrderIngredientConfig {
+                            ing: Image::BurgerTop,
+                            chance: 1.0,
+                            price: 3,
+                        }
+                    ],
+                    weight: 1.0,
+                    depreciation_seconds:5.0
+                },
+                OrderConfig { // Salad
+                    ings: vec![
+                        OrderIngredientConfig {
+                            ing: Image::LettuceLeaf,
+                            chance: 1.0,
+                            price: 8,
+                        },
+                        OrderIngredientConfig {
+                            ing: Image::TomatoSlice,
+                            chance: 1.0,
+                            price: 10,
+                        },
+                    ],
+                    weight: 0.5,
+                    depreciation_seconds: 5.0
+                },
+                OrderConfig { // Curry Crab
+                    ings: vec![
+                        OrderIngredientConfig {
+                            ing: Image::CurryCrab,
+                            chance: 1.0,
+                            price: 30,
+                        },
+                        OrderIngredientConfig {
+                            ing: Image::Dumplings,
+                            chance: 1.0,
+                            price: 10,
+                        },
+                    ],
+                    weight: 0.5,
+                    depreciation_seconds: 8.0
+                }
+            ]
+        }
     }
 }
