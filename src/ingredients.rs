@@ -101,6 +101,7 @@ pub struct IngredientStack {
     pub text: Option<Rc<String>>,
     pub progress: Option<Interpolable<f64>>,
     pub sub_text: Option<Rc<String>>,
+    pub overlay: Option<Image>,
 }
 
 impl IngredientStack {
@@ -111,6 +112,7 @@ impl IngredientStack {
             text: None,
             progress: None,
             sub_text: None,
+            overlay: None,
         }
     }
 
@@ -166,6 +168,15 @@ impl IngredientStack {
             }
         }
 
+        // Draw the overlay in the bottom-right corner of the first ingredient
+        for (ing, overlay) in self.ingredients.iter().zip(self.overlay.iter()) {
+            let x_off = game.images().image_width(&ing.image) - (game.images().image_width(overlay)/2.0);
+            let y_off = game.images().image_height(&ing.image) - (game.images().image_height(overlay)/2.0);
+            let overlay_pos = ing.pos.cur() + (x_off, y_off).into();
+
+            game.draw_image(overlay, &overlay_pos);
+        }
+
         for (text, cfg) in self.text.iter().zip(text_cfg.iter()) {
             game.draw_text(&text, &(self.pos.cur() + (0, y_off).into()), self.width(game), cfg);
             // TODO figure out text height
@@ -186,7 +197,7 @@ impl IngredientStack {
 
         let end = Pos2d::new(
             0.0,
-            - cur_height - game.images().image_height(&ingredient.image)
+            -cur_height - game.images().image_height(&ingredient.image)
         );
 
         ingredient.pos.rebase(Some(self.pos.clone()), end, immediate);

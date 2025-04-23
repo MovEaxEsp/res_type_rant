@@ -2,28 +2,34 @@ mod images;
 mod ingredients;
 mod ingredient_area;
 mod interpolable;
+mod keyword_entry;
 mod order_bar;
 mod preparation_area;
+mod state_area;
+mod store;
 mod traits;
 mod utils;
 
 use images::{Image, Images, ImagesConfig};
-use ingredient_area::{IngredientArea, IngredientAreaConfig};
+use ingredient_area::{IngredientArea, IngredientAreaGameConfig, IngredientAreaUiConfig};
 use ingredients::MovableIngredient;
 use interpolable::{Pos2d, Interpolable};
-use order_bar::{OrderBar, OrderBarConfig};
+use js_sys::JsString;
+use keyword_entry::{KeywordEntry, KeywordEntryUiConfig};
+use order_bar::{OrderBar, OrderBarGameConfig, OrderBarUiConfig};
 use preparation_area::{PreparationArea, PreparationAreaConfig};
 use serde::{Serialize,Deserialize};
-use traits::{BackgroundConfig, BaseGame, MoneyConfig, ProgressBarConfig, TextConfig};
+use state_area::{StateArea, StateGameConfig, StateUiConfig};
+use store::{StoreConfig, StoreUpgradeAction, StoreUpgradeConfig, UpgradeStore};
+use traits::{BackgroundConfig, BaseGame, MoneyConfig, ProgressBarConfig, RingConfig, TextConfig};
 use utils::{set_panic_hook, WordBank};
-
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
-use js_sys::JsString;
-use core::f64;
-use std::cell::RefCell;
-use std::rc::Rc;
 use web_time::Instant;
+
+use std::cell::RefCell;
+use std::collections::HashSet;
+use std::rc::Rc;
 
 #[wasm_bindgen]
 extern "C" {
@@ -32,13 +38,30 @@ extern "C" {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct GameConfig {
-    pub word_level: i32,
+pub struct UiConfig {
     pub images: ImagesConfig,
-    pub order_bar: OrderBarConfig,
-    pub ingredient_area: IngredientAreaConfig,
+    pub order_bar: OrderBarUiConfig,
+    pub ingredient_area: IngredientAreaUiConfig,
     pub preparation_area: PreparationAreaConfig,
     pub money: MoneyConfig,
+    pub store: StoreConfig,
+    pub keyword_entry: KeywordEntryUiConfig,
+    pub fps: TextConfig,
+    pub state: StateUiConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct GameConfig {
+    pub word_level: i32,
+    pub ingredient_area: IngredientAreaGameConfig,
+    pub order_bar: OrderBarGameConfig,
+    pub state: StateGameConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct OuterConfig {
+    pub ui: UiConfig,
+    pub game: GameConfig,
 }
 
 ///////// GameState
@@ -47,9 +70,8 @@ struct GameImp {
     cur_money: RefCell<i32>,
     images: Images,
     words_bank: WordBank,
-    config: GameConfig,
+    config: OuterConfig,
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
-    entered_text: String,
     entered_keywords: Vec<String>, // space-split version of entered_text
     keyword_r: Interpolable<f64>,
     keyword_g: Interpolable<f64>,
@@ -59,6 +81,10 @@ struct GameImp {
 impl BaseGame for GameImp {
     fn set_global_alpha(&self, alpha: f64) {
         self.canvas.set_global_alpha(alpha);
+    }
+
+    fn get_money(&self) -> i32 {
+        *self.cur_money.borrow()
     }
 
     fn add_money(&self, amt: i32) {
@@ -123,6 +149,27 @@ impl BaseGame for GameImp {
         self.canvas.set_global_alpha(1.0);
     }
 
+    
+    fn draw_ring(&self, pos: &Pos2d, r1: f64, r2: f64, rad1: f64, rad2: f64, cfg: &RingConfig)
+    {
+        let c = &self.canvas;
+
+        c.begin_path();
+        c.arc(pos.x, pos.y, r1, rad1, rad2).expect("ring1");
+        c.arc_with_anticlockwise(pos.x, pos.y, r2, rad2, rad1, true).expect("ring2");
+        c.close_path();
+
+        if cfg.stroke {
+            c.set_stroke_style_str(&cfg.style);
+            c.set_line_width(10.0);
+            c.stroke();
+        }
+        else {
+            c.set_fill_style_str(&cfg.style);
+            c.fill();
+        }
+    }
+
     /*
     fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64) {
         let middle_x = xpos + width/2.0;
@@ -140,7 +187,7 @@ impl BaseGame for GameImp {
     }
     */
 
-    fn draw_text(&self, text: &String, pos: &Pos2d, width: f64, cfg: &TextConfig) {
+    fn draw_text(&self, text: &str, pos: &Pos2d, width: f64, cfg: &TextConfig) {
         let mut font_size: usize = cfg.size as usize;
 
         self.canvas.set_global_alpha(cfg.alpha);
@@ -258,16 +305,47 @@ struct GameState {
     order_bar: OrderBar,
     ingredient_area: IngredientArea,
     preparation_area: PreparationArea,
-    frame_start: Instant,  // time when previous frame started
+    store: UpgradeStore,
+    state_area: StateArea,
+    keyword_entry: KeywordEntry,
+    frame_times: Vec<(Instant, Instant)>, // for measuring elapsed_time, fps
+    fps_str: String,
     imp: GameImp,
 }
 
 impl GameState {
     fn think(&mut self) {
+
+        // Update frame time and FPS status
+        let prev_frame = &self.frame_times[self.frame_times.len() - 2];
+        let cur_frame = self.frame_times.last().unwrap();
+        self.imp.elapsed_time = (cur_frame.0 - prev_frame.0).as_secs_f64();
+
+        let frames_per_update = 10;
+        if self.frame_times.len() > frames_per_update + 2 {
+            // Update the FPS occasionally
+            let fps_frames: Vec<(Instant, Instant)> = self.frame_times.drain(..frames_per_update).collect();
+            let processing_time: f64 = fps_frames.iter().map(|v|(v.1-v.0).as_secs_f64()).sum();
+
+            let elapsed_time = (fps_frames.last().unwrap().1 - fps_frames[0].0).as_secs_f64();
+            let fps = frames_per_update as f64/elapsed_time;
+            let processing_pct = (processing_time/elapsed_time) * 100.0;
+            self.fps_str = format!("{:.2} FPS ({:2.2} %)", fps, processing_pct);
+        }
+
         self.imp.think();
-        self.order_bar.think(&self.imp, &self.imp.config.order_bar);
-        self.ingredient_area.think(&self.imp);
-        self.preparation_area.think(&self.imp);
+
+        self.state_area.think(&self.imp);
+        self.keyword_entry.think(&self.imp);
+
+        if self.state_area.in_store() {
+            // TODO
+        }
+        else {
+            self.order_bar.think(&self.imp, &self.imp.config.ui.order_bar, &self.imp.config.game.order_bar);
+            self.ingredient_area.think(&self.imp);
+            self.preparation_area.think(&self.imp);
+        }
     }
 
     fn draw(&self) {
@@ -275,19 +353,26 @@ impl GameState {
         self.imp.canvas.clear_rect(0.0, 0.0, 2560.0, 1440.0);
         self.imp.canvas.fill_rect(0.0, 0.0, 2560.0, 1440.0);
 
-        self.order_bar.draw(&self.imp, &self.imp.config.order_bar);
-        self.ingredient_area.draw(&self.imp, &self.imp.config.ingredient_area);
-        self.preparation_area.draw(&self.imp, &self.imp.config.preparation_area);
+        self.state_area.draw(&self.imp.config.ui.state, &self.imp.config.game.state, &self.imp);
+
+        if self.state_area.in_store() {
+            self.store.draw(&self.imp, &self.imp.config.ui.store);
+        }
+        else {
+            self.order_bar.draw(&self.imp, &self.imp.config.ui.order_bar);
+            self.ingredient_area.draw(&self.imp, &self.imp.config.ui.ingredient_area);
+            self.preparation_area.draw(&self.imp, &self.imp.config.ui.preparation_area);
+        }
     
-        // Draw current input
-        self.imp.canvas.set_fill_style_str("yellow");
-        self.imp.canvas.set_font("48px serif");
-        self.imp.canvas.fill_text(&self.imp.entered_text, 20.0, 1300.0).expect("text");
+        self.keyword_entry.draw(&self.imp.config.ui.keyword_entry, &self.imp);
 
         // Draw current money
-        let money_pos = self.imp.config.money.pos;
-        self.imp.draw_area_background(&money_pos, &self.imp.config.money.bg);
-        self.imp.draw_text(&format!("$ {}", *self.imp.cur_money.borrow()), &money_pos, self.imp.config.money.bg.width, &self.imp.config.money.text);
+        let money_pos = self.imp.config.ui.money.pos;
+        self.imp.draw_area_background(&money_pos, &self.imp.config.ui.money.bg);
+        self.imp.draw_text(&format!("$ {}", *self.imp.cur_money.borrow()), &money_pos, self.imp.config.ui.money.bg.width, &self.imp.config.ui.money.text);
+
+        // Draw FPS
+        self.imp.draw_text(&self.fps_str, &(2000, 10).into(), 300.0, &self.imp.config.ui.fps);
 
         let screen_context = self.screen_canvas
         .get_context("2d").unwrap().unwrap()
@@ -300,52 +385,77 @@ impl GameState {
             0.0, 0.0,
             self.screen_canvas.width() as f64, self.screen_canvas.height() as f64)
         .expect("draw offscreen canvas");
+    }
 
-
+    fn update_recipes(&mut self) {
+        let mut ings: HashSet<Image> = HashSet::new();
+        self.ingredient_area.load_ingredients(&mut ings);
+        self.preparation_area.append_possible_ingredients(&mut ings, &self.imp.config.ui.preparation_area);
+        self.order_bar.set_available_ingredients(ings);
     }
 
     fn handle_command(&mut self) {
-        let keywords = self.imp.entered_text.split(' ').collect::<Vec<&str>>();
+        let keywords = self.imp.entered_keywords.clone();
 
-        let mut selected_ings: Vec<MovableIngredient> = Vec::new();
+        if self.state_area.in_store() {
+            let mut upgrades: Vec<StoreUpgradeConfig> = Vec::new();
 
-        self.ingredient_area.handle_command(
-            &keywords,
-            &mut selected_ings,
-            &self.imp);
+            self.store.handle_command(&keywords, &mut upgrades, self.imp.word_bank(), &self.imp, &self.imp.config.ui.store);
 
-        let handled = self.preparation_area.handle_command(&keywords, &mut selected_ings, &self.imp, &self.imp.config.preparation_area);
-        if !handled {
-            self.order_bar.handle_command(&keywords, &mut selected_ings, &self.imp);
+            for upgr in upgrades.iter() {
+                match upgr.action {
+                    StoreUpgradeAction::UnlockIngredient =>
+                        self.imp.config.game.ingredient_area.ingredients.push(upgr.img),
+                    StoreUpgradeAction::UnlockCooker => 
+                        self.imp.config.ui.preparation_area.cookers.iter_mut()
+                            .filter(|c| c.base_image == upgr.img)
+                            .for_each(|c| c.num_unlocked += 1),
+                }
+            }
+
+            self.update_config(&self.imp.config.clone());
+
+            self.update_recipes();
+
+            self.state_area.handle_command(&keywords,&self.imp);
+
+            // If we're not in the store now, then we've transitioned back to the restaurant
+            if !self.state_area.in_store() {
+                self.order_bar.reset_state();
+                self.preparation_area.reset_state();
+                self.keyword_entry.reset_state();
+            }
+        }
+        else {
+            let mut selected_ings: Vec<MovableIngredient> = Vec::new();
+
+            self.ingredient_area.handle_command(
+                &keywords,
+                &mut selected_ings,
+                &self.imp);
+
+            let handled = self.preparation_area.handle_command(&keywords, &mut selected_ings, &self.imp, &self.imp.config.ui.preparation_area);
+            if !handled {
+                self.order_bar.handle_command(&keywords, &mut selected_ings, &self.imp);
+            }
         }
     }
 
     fn handle_key(&mut self, key: &str, _state_rc: &Rc<RefCell<GameState>>) {
-        if key.len() == 1 {
-            self.imp.entered_text.push(key.chars().nth(0).unwrap());
-        }
-        else if key == "Backspace" {
-            if self.imp.entered_text.len() > 0 {
-                self.imp.entered_text.pop();
-            }
-        }
-        else if key == "Enter" {
+        if self.keyword_entry.handle_key(key, &mut self.imp.entered_keywords) {
             self.handle_command();
-            self.imp.entered_text.clear();
+            self.imp.entered_keywords.clear();
         }
-        else {
-            log(&format!("Unhandled key: {}", key));
-        }
-
-        self.imp.entered_keywords = self.imp.entered_text.split_whitespace().map(String::from).collect();
     }
 
-    fn update_config(&mut self, cfg: &GameConfig) {
+    fn update_config(&mut self, cfg: &OuterConfig) {
         self.imp.config = cfg.clone();
-        self.imp.images.update_config(&cfg.images);
-        self.order_bar.update_config(&cfg.order_bar, &self.imp);
-        self.ingredient_area.update_config(&self.imp, &self.imp.config.ingredient_area);
-        self.preparation_area.update_config(&self.imp, &self.imp.config.preparation_area);
+        self.imp.images.update_config(&cfg.ui.images);
+        self.order_bar.update_config(&cfg.ui.order_bar, &cfg.game.order_bar, &self.imp);
+        self.ingredient_area.update_config(&self.imp, &self.imp.config.ui.ingredient_area, &self.imp.config.game.ingredient_area);
+        self.preparation_area.update_config(&self.imp, &self.imp.config.ui.preparation_area);
+        self.state_area.update_config(&self.imp.config.ui.state, &self.imp.config.game.state);
+        self.keyword_entry.update_config(&self.imp.config.ui.keyword_entry);
     }
 
 }
@@ -356,14 +466,14 @@ static mut S_STATE: Option<Rc<RefCell<GameState>>> = None;
 pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: JsValue, bad_words_db: JsValue) {
     set_panic_hook();
     
-    let game_config: GameConfig = serde_wasm_bindgen::from_value(config).unwrap();
+    let game_config: OuterConfig = serde_wasm_bindgen::from_value(config).unwrap();
 
-    let order_bar = OrderBar::new(&game_config.order_bar);
+    let order_bar = OrderBar::new(&game_config.ui.order_bar, &game_config.game.order_bar);
 
     let words_bank = WordBank::new(
         &words_db.dyn_into::<JsString>().expect("wordsDb").into(),
         &bad_words_db.dyn_into::<JsString>().expect("badWords").into(),
-        game_config.word_level as usize);
+        game_config.game.word_level as usize);
 
     let offscreen_canvas = OffscreenCanvas::new(2560, 1440).expect("offscreen canvas");
     let offscreen_context = offscreen_canvas.get_context("2d").unwrap().unwrap()
@@ -373,31 +483,44 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 
     let game_imp = GameImp {
         canvas: offscreen_context,
-        images: Images::new(images, &game_config.images),
+        images: Images::new(images, &game_config.ui.images),
         cur_money: RefCell::new(0),
         words_bank: words_bank,
         config: game_config,
         elapsed_time: 0.0, 
-        entered_text: String::new(),
         entered_keywords: Vec::new(),
         keyword_r: Interpolable::new(72.0, 111.0),
         keyword_g: Interpolable::new(23.0, 79.0),
         keyword_b: Interpolable::new(219.0, 231.0),
     };
 
-    let preparation_area = PreparationArea::new(&game_imp, &game_imp.config.preparation_area);
+    let preparation_area = PreparationArea::new(&game_imp, &game_imp.config.ui.preparation_area);
 
-    let ingredient_area= IngredientArea::new(&game_imp, &game_imp.config.ingredient_area);
+    let ingredient_area = IngredientArea::new(&game_imp, &game_imp.config.ui.ingredient_area, &game_imp.config.game.ingredient_area);
 
-    let state = GameState{
+    let store = UpgradeStore::new(&game_imp, &game_imp.config.ui.store);
+
+    let state_area = StateArea::new(&game_imp.config.ui.state, &game_imp.config.game.state, &game_imp);
+
+    let keyword_entry = KeywordEntry::new(&game_imp.config.ui.keyword_entry);
+
+    let mut state = GameState{
         screen_canvas: screen_canvas,
         offscreen_canvas: offscreen_canvas,
         order_bar: order_bar,
         ingredient_area: ingredient_area,
         preparation_area: preparation_area,
-        frame_start: Instant::now(),
+        store: store,
+        keyword_entry: keyword_entry,
+        state_area: state_area,
+        frame_times: Vec::new(),
         imp: game_imp,
+        fps_str: "".to_string(),
     };
+
+    state.frame_times.push((Instant::now(), Instant::now()));
+
+    state.update_recipes();
 
     unsafe {
         S_STATE = Some(Rc::new(RefCell::new(state)));
@@ -408,11 +531,13 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 fn run_frame_imp(state_rc: &Rc<RefCell<GameState>>) {
     let mut state = state_rc.borrow_mut();
 
-    state.imp.elapsed_time = state.frame_start.elapsed().as_secs_f64();
-    state.frame_start = Instant::now();
+    let now = Instant::now();
+    state.frame_times.push((now, now));
 
     state.think();
     state.draw();
+
+    state.frame_times.last_mut().unwrap().1 = Instant::now();
 }
 
 #[wasm_bindgen]
@@ -436,35 +561,55 @@ pub fn report_keypress(key: &str) {
 
 #[wasm_bindgen]
 pub fn default_config() -> JsValue {
-    let cfg = GameConfig {
-        word_level: 0,
-        images: Images::default_config(),
-        order_bar: OrderBar::default_config(),
-        ingredient_area: IngredientArea::default_config(),
-        preparation_area: PreparationArea::default_config(),
-        money: MoneyConfig {
-            pos: (50, 50).into(),
-            bg: BackgroundConfig {
-                offset: (0, -20).into(),
-                width: 400.0,
-                height: 250.0,
-                corner_radius: 30.0,
-                border_style: "black".to_string(),
-                border_alpha: 0.3,
-                border_width: 5.0,
-                bg_style: "light green".to_string(),
-                bg_alpha: 0.2
+    let cfg = OuterConfig {
+        ui: UiConfig {
+            images: Images::default_config(),
+            order_bar: OrderBar::default_ui_config(),
+            ingredient_area: IngredientArea::default_ui_config(),
+            preparation_area: PreparationArea::default_config(),
+            store: UpgradeStore::default_config(),
+            keyword_entry: KeywordEntry::default_ui_config(),
+            state: StateArea::default_ui_config(),
+            money: MoneyConfig {
+                pos: (50, 50).into(),
+                bg: BackgroundConfig {
+                    offset: (0, -20).into(),
+                    width: 400.0,
+                    height: 250.0,
+                    corner_radius: 30.0,
+                    border_style: "black".to_string(),
+                    border_alpha: 0.3,
+                    border_width: 5.0,
+                    bg_style: "green".to_string(),
+                    bg_alpha: 0.2
+                },
+                text: TextConfig {
+                    offset: (40, 40).into(),
+                    stroke: true,
+                    style: "gold".to_string(),
+                    font: "comic sans".to_string(),
+                    size: 128,
+                    center_and_fit: false,
+                    alpha: 1.0,
+                    is_command: false,
+                }
             },
-            text: TextConfig {
-                offset: (40, 40).into(),
-                stroke: true,
-                style: "gold".to_string(),
+            fps: TextConfig {
+                offset: (0, 0).into(),
+                stroke: false,
+                style: "black".to_string(),
                 font: "comic sans".to_string(),
-                size: 128,
+                size: 30,
                 center_and_fit: false,
-                alpha: 1.0,
+                alpha: 0.7,
                 is_command: false,
-            }
+            },
+        },
+        game: GameConfig {
+            word_level: 0,
+            ingredient_area: IngredientArea::default_game_config(),
+            order_bar: OrderBar:: default_game_config(),
+            state: StateArea::default_game_config(),
         }
     };
 
@@ -474,7 +619,7 @@ pub fn default_config() -> JsValue {
 #[wasm_bindgen]
 pub fn update_config(config: JsValue) {
 
-    match serde_wasm_bindgen::from_value::<GameConfig>(config) {
+    match serde_wasm_bindgen::from_value::<OuterConfig>(config) {
         Ok(cfg) => {
             unsafe {
                 #[allow(static_mut_refs)]

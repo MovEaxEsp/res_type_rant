@@ -7,6 +7,8 @@ use crate::traits::{BackgroundConfig, BaseGame, ProgressBarConfig, TextConfig};
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
 
+use std::collections::HashSet;
+
 #[wasm_bindgen]
 extern "C" {
     #[wasm_bindgen(js_namespace = console)]
@@ -26,6 +28,7 @@ pub struct CookerConfig {
     pub base_image: Image,
     pub base_offset: Pos2d,
     pub instances: Vec<Pos2d>,
+    pub num_unlocked: i32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -41,6 +44,7 @@ struct PreparationAreaStack {
     stack: IngredientStack,
     cooked_stack: Option<IngredientStack>,
     is_cooked: bool,
+    is_unlocked: bool,
 }
 
 impl PreparationAreaStack {
@@ -57,10 +61,25 @@ impl PreparationAreaStack {
             stack: stack,
             cooked_stack: None,
             is_cooked: false,
+            is_unlocked: false,
+        }
+    }
+
+    fn reset_state(&mut self) {
+        self.stack.ingredients.truncate(1);
+        self.cooked_stack = None;
+        self.is_cooked = false;
+        for progress in self.stack.progress.iter_mut() {
+            progress.set_cur(0.0);
+            progress.set_end(0.0);
         }
     }
 
     fn think(&mut self, game: &dyn BaseGame) {
+        if !self.is_unlocked {
+            return;
+        }
+
         let ret = self.stack.think(game);
 
         if ret.progress_done {
@@ -87,9 +106,14 @@ impl PreparationAreaStack {
     fn update_config(&mut self, cfg: &CookerConfig, inst_idx: usize) {
         self.stack.pos.set_end(cfg.instances[inst_idx]);
         self.stack.ingredients[0].image = cfg.base_image;
+        self.is_unlocked = cfg.num_unlocked > inst_idx as i32;
     }
 
     fn draw(&self, game: &dyn BaseGame, text_cfg: &TextConfig, progress_cfg: &ProgressBarConfig) {
+        if !self.is_unlocked {
+            return;
+        }
+
         if let Some(cooked_stack) = &self.cooked_stack {
             // Draw the ingredients transitioning to their cooked versions, if they have one
 
@@ -119,7 +143,11 @@ impl PreparationAreaStack {
 
     // Return 'true' if the specified 'keyword' matches our keyword, and replace it with a new
     // one from the specified 'word_bank'.
-    fn check_keyword(&mut self, keyword: &str, selected_ings: &mut Vec<MovableIngredient>, cfg: &CookerConfig, game: &dyn BaseGame) -> bool {
+    fn check_keyword(&mut self, keyword: &String, selected_ings: &mut Vec<MovableIngredient>, cfg: &CookerConfig, game: &dyn BaseGame) -> bool {
+        if !self.is_unlocked {
+            return false;
+        }
+
         for progress in self.stack.progress.iter() {
             if progress.is_moving() {
                 // Can't match while we're cooking or already selected
@@ -236,6 +264,16 @@ impl PreparationArea {
         }
     }
 
+    /// Reset our state for the start of a new day
+    pub fn reset_state(&mut self) {
+        for cook_type in self.cookers.iter_mut() {
+            for cook in cook_type.iter_mut() {
+                cook.reset_state();
+            }
+        }
+    }
+
+    /// Update our state for the current frame
     pub fn think(&mut self, game: &dyn BaseGame) {
         for cooker_type in self.cookers.iter_mut() {
             for inst in cooker_type.iter_mut() {
@@ -246,11 +284,12 @@ impl PreparationArea {
         self.pos.advance(game.elapsed_time());
     }
 
-    pub fn handle_command(&mut self, keywords: &Vec<&str>, selected_ings: &mut Vec<MovableIngredient>, game:&dyn BaseGame, cfg: &PreparationAreaConfig) -> bool {
+    /// Handle the specified 'keywords' being typed by the user.
+    pub fn handle_command(&mut self, keywords: &Vec<String>, selected_ings: &mut Vec<MovableIngredient>, game:&dyn BaseGame, cfg: &PreparationAreaConfig) -> bool {
         for (cooker_type, cfg) in self.cookers.iter_mut().zip(cfg.cookers.iter()) {
             for cooker in cooker_type.iter_mut() {
                 for keyword in keywords.iter() {
-                    if cooker.check_keyword(*keyword, selected_ings, cfg, game) {        
+                    if cooker.check_keyword(keyword, selected_ings, cfg, game) {        
                         return true;
                     }
                 }        
@@ -260,6 +299,7 @@ impl PreparationArea {
         return false;
     }
 
+    /// Draw ourselves
     pub fn draw(&self, game: &dyn BaseGame, cfg: &PreparationAreaConfig) {
         game.draw_area_background(&self.pos.cur(), &cfg.bg);
 
@@ -270,6 +310,7 @@ impl PreparationArea {
         }
     }
 
+    /// Update our config
     pub fn update_config(&mut self, game: &dyn BaseGame, cfg: &PreparationAreaConfig) {
         self.pos.set_end(cfg.pos);
 
@@ -306,6 +347,23 @@ impl PreparationArea {
         }
     }
 
+    // Figure out which ingredients are possible to produce using our cooking recipes, and append 
+    // the corresponding outputs to the specified 'ings'.
+    pub fn append_possible_ingredients(&self, ings: &mut HashSet<Image>, cfg: &PreparationAreaConfig) {
+        for cooker in cfg.cookers.iter() {
+            if cooker.num_unlocked == 0 {
+                // Can't cook anything with this cooker
+                continue;
+            }
+            
+            for recipe in cooker.recipes.iter() {
+                if recipe.inputs.iter().all(|ing| ings.contains(ing)) {
+                    recipe.outputs.iter().for_each(|ing| { ings.insert(*ing); } );
+                }
+            }
+        }
+    }
+
     pub fn default_config() -> PreparationAreaConfig {
         PreparationAreaConfig {
             pos: (1200, 800).into(),
@@ -330,7 +388,8 @@ impl PreparationArea {
                             cook_time: 8.0,
                         },
                     ],
-                    instances: vec![ (0, 300).into(), (300, 300).into()]
+                    instances: vec![ (0, 100).into(), (300, 100).into(), (600, 100).into()],
+                    num_unlocked: 0,
                 },
                 CookerConfig {
                     base_image: Image::TriniPot,
@@ -347,13 +406,14 @@ impl PreparationArea {
                             cook_time: 5.0,
                         }
                     ],
-                    instances: vec![ (600, 300).into(), (900, 300).into()]
+                    instances: vec![ (0, 550).into(), (300, 550).into(), (600, 550).into()],
+                    num_unlocked: 0,
                 },
             ],
             bg: BackgroundConfig {
                 offset: (-50, -70).into(),
                 width: 1300.0,
-                height: 500.0,
+                height: 700.0,
                 corner_radius: 30.0,
                 border_style: "black".to_string(),
                 border_alpha: 0.3,

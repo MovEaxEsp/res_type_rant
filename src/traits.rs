@@ -43,6 +43,13 @@ pub struct MoneyConfig {
     pub text: TextConfig,
 }
 
+#[derive(Serialize, Deserialize, Clone)]
+pub struct RingConfig {
+    pub stroke: bool,
+    pub style: String,
+}
+
+
 pub trait BaseGame {
     fn set_global_alpha(&self, alpha: f64);
 
@@ -54,9 +61,13 @@ pub trait BaseGame {
 
     fn draw_progress_bar(&self, pos: &Pos2d, pct: f64, cfg: &ProgressBarConfig);
 
+    fn draw_ring(&self, pos: &Pos2d, r1: f64, r2: f64, rad1: f64, rad2: f64, cfg: &RingConfig);
+
     //fn draw_halo(&self, xpos: f64, ypos: f64, width: f64, height: f64);
 
-    fn draw_text(&self, text: &String, pos: &Pos2d, width: f64, cfg: &TextConfig);
+    fn draw_text(&self, text: &str, pos: &Pos2d, width: f64, cfg: &TextConfig);
+
+    fn get_money(&self) -> i32;
 
     fn add_money(&self, amt: i32);
 
@@ -69,4 +80,5 @@ pub trait BaseGame {
     //fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps;
 
     fn elapsed_time(&self) -> f64;
+    
 }
