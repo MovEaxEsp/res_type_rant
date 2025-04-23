@@ -1,5 +1,6 @@
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BackgroundConfig, BaseGame, TextConfig};
+use crate::painter::{BackgroundConfig, TextConfig};
+use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
@@ -61,8 +62,8 @@ impl KeywordEntry {
             to_draw = &self.entered_text[..self.entered_text.len()-1];
         }
 
-        game.draw_area_background(&cfg_ui.pos, &cfg_ui.bg);
-        game.draw_text(to_draw, &cfg_ui.pos, cfg_ui.bg.width, &cfg_ui.text);
+        game.painter().draw_area_background(&cfg_ui.pos, &cfg_ui.bg);
+        game.painter().draw_text(to_draw, &cfg_ui.pos, cfg_ui.bg.width, &cfg_ui.text);
     }
 
     pub fn handle_key(&mut self, key: &str, entered_keywords: &mut Vec<String>) -> bool {

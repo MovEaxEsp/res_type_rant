@@ -2,7 +2,8 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BackgroundConfig, BaseGame, RingConfig, TextConfig};
+use crate::painter::{BackgroundConfig, RingConfig, TextConfig};
+use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
 
@@ -89,11 +90,11 @@ impl StateArea {
             };
             
             let progress_rad = PI * self.clock_progress.cur()/cfg_game.day_length;
-            game.draw_ring(&cfg_ui.pos, cfg_ui.clock_r1, cfg_ui.clock_r2, PI, PI + progress_rad, &ring); 
+            game.painter().draw_ring(&cfg_ui.pos, cfg_ui.clock_r1, cfg_ui.clock_r2, PI, PI + progress_rad, &ring); 
 
             ring.stroke = true;
             ring.style = "purple".to_string();
-            game.draw_ring(&cfg_ui.pos, cfg_ui.clock_r1, cfg_ui.clock_r2, PI, 0.0, &ring); 
+            game.painter().draw_ring(&cfg_ui.pos, cfg_ui.clock_r1, cfg_ui.clock_r2, PI, 0.0, &ring); 
         }
 
     }

@@ -2,7 +2,8 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BackgroundConfig, BaseGame, ProgressBarConfig, TextConfig};
+use crate::painter::{BackgroundConfig, ProgressBarConfig, TextConfig};
+use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
@@ -128,13 +129,13 @@ impl PreparationAreaStack {
                 draw_text_cfg = None;
             }
 
-            game.set_global_alpha(1.0 - cur_progress);
+            game.painter().set_global_alpha(1.0 - cur_progress);
             self.stack.draw(game, Some(progress_cfg), draw_text_cfg, None);
 
-            game.set_global_alpha(cur_progress);
+            game.painter().set_global_alpha(cur_progress);
             cooked_stack.draw(game, None, None, None);
 
-            game.set_global_alpha(1.0);
+            game.painter().set_global_alpha(1.0);
         }
         else {
             self.stack.draw(game, Some(progress_cfg), Some(text_cfg), None);
@@ -301,7 +302,7 @@ impl PreparationArea {
 
     /// Draw ourselves
     pub fn draw(&self, game: &dyn BaseGame, cfg: &PreparationAreaConfig) {
-        game.draw_area_background(&self.pos.cur(), &cfg.bg);
+        game.painter().draw_area_background(&self.pos.cur(), &cfg.bg);
 
         for (cooker_type, _cfg) in self.cookers.iter().zip(cfg.cookers.iter()) {
             for cooker in cooker_type.iter() {

@@ -2,7 +2,8 @@
 use crate::images::Image;
 use crate::ingredients::{MovableIngredient, IngredientStack};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BackgroundConfig, BaseGame, TextConfig};
+use crate::painter::{BackgroundConfig, TextConfig};
+use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
@@ -57,7 +58,7 @@ impl IngredientArea {
     }
 
     pub fn draw(&self, game: &dyn BaseGame, cfg_ui: &IngredientAreaUiConfig) {
-        game.draw_area_background(&self.pos.cur(), &cfg_ui.bg);
+        game.painter().draw_area_background(&self.pos.cur(), &cfg_ui.bg);
 
         for ing in self.ingredients.iter() {
             ing.draw(game, None, Some(&cfg_ui.text), None);

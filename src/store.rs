@@ -2,7 +2,8 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BackgroundConfig, BaseGame, TextConfig};
+use crate::painter::{BackgroundConfig, TextConfig};
+use crate::traits::BaseGame;
 use crate::utils::WordBank;
 
 use serde::{Serialize,Deserialize};
@@ -55,7 +56,7 @@ impl UpgradeStore {
     }
 
     pub fn draw(&self, game: &dyn BaseGame, cfg: &StoreConfig) {
-        game.draw_area_background(&cfg.pos, &cfg.bg);
+        game.painter().draw_area_background(&cfg.pos, &cfg.bg);
 
         let mut pos: Pos2d = (0,0).into();
 

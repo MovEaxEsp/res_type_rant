@@ -2,7 +2,8 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::traits::{BaseGame, BackgroundConfig, TextConfig, ProgressBarConfig};
+use crate::painter::{BackgroundConfig, ProgressBarConfig, TextConfig};
+use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
@@ -223,7 +224,7 @@ impl OrderBar {
 
     /// Draw the OrderBar
     pub fn draw(&self, game: &dyn BaseGame, cfg_ui: &OrderBarUiConfig) {
-        game.draw_area_background(&self.pos.cur(), &cfg_ui.bg);
+        game.painter().draw_area_background(&self.pos.cur(), &cfg_ui.bg);
 
         for i in 0..self.orders.len() {
             let order = &self.orders[i];

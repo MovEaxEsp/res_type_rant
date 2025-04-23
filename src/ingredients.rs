@@ -1,6 +1,7 @@
 
 use crate::images::Image;
-use crate::traits::{BaseGame, ProgressBarConfig, TextConfig};
+use crate::painter::{ProgressBarConfig, TextConfig};
+use crate::traits::BaseGame;
 use crate::interpolable::{Interpolable, Pos2d};
 
 use std::rc::Rc;
@@ -70,10 +71,10 @@ impl MovableIngredient {
 
     pub fn draw(&self, game: &dyn BaseGame) {
         if self.grayed_out {
-            game.draw_gray_image(&self.image, &self.pos.cur());
+            game.painter().draw_gray_image(&self.image, &self.pos.cur());
         }
         else {
-            game.draw_image(&self.image, &self.pos.cur());
+            game.painter().draw_image(&self.image, &self.pos.cur());
         }
 
         if let Some(inc) = &*self.incoming_ing {
@@ -163,41 +164,42 @@ impl IngredientStack {
         for (progress, cfg) in self.progress.iter().zip(progress_cfg.iter()) {
             if progress.is_moving() {
                 let x_off = (self.width(game) - cfg.bg.width)/2.0;
-                game.draw_progress_bar(&(self.pos.cur() + (x_off, 0.0).into()), progress.cur(), cfg);
+                game.painter().draw_progress_bar(&(self.pos.cur() + (x_off, 0.0).into()), progress.cur(), cfg);
                 y_off += cfg.bg.height;
             }
         }
 
         // Draw the overlay in the bottom-right corner of the first ingredient
         for (ing, overlay) in self.ingredients.iter().zip(self.overlay.iter()) {
-            let x_off = game.images().image_width(&ing.image) - (game.images().image_width(overlay)/2.0);
-            let y_off = game.images().image_height(&ing.image) - (game.images().image_height(overlay)/2.0);
+            let images = game.painter().images();
+            let x_off = images.image_width(&ing.image) - (images.image_width(overlay)/2.0);
+            let y_off = images.image_height(&ing.image) - (images.image_height(overlay)/2.0);
             let overlay_pos = ing.pos.cur() + (x_off, y_off).into();
 
-            game.draw_image(overlay, &overlay_pos);
+            game.painter().draw_image(overlay, &overlay_pos);
         }
 
         for (text, cfg) in self.text.iter().zip(text_cfg.iter()) {
-            game.draw_text(&text, &(self.pos.cur() + (0, y_off).into()), self.width(game), cfg);
+            game.painter().draw_text(&text, &(self.pos.cur() + (0, y_off).into()), self.width(game), cfg);
             // TODO figure out text height
         }
 
         for (text, cfg) in self.sub_text.iter().zip(subtext_cfg.iter()) {
-            game.draw_text(&text, &(self.pos.cur() + (0, y_off).into()), self.width(game), cfg);
+            game.painter().draw_text(&text, &(self.pos.cur() + (0, y_off).into()), self.width(game), cfg);
             // TODO figure out text height
         }
     }
 
     pub fn add_ingredient(&mut self, mut ingredient: MovableIngredient, immediate: bool, game: &dyn BaseGame) {
 
-        let cur_height: f64 = self.ingredients.iter().map(|ing| game.images().image_height(&ing.image)).sum();
+        let cur_height: f64 = self.ingredients.iter().map(|ing| game.painter().images().image_height(&ing.image)).sum();
 
         // Account for padding between ingredients
         //cur_height += 10.0 *self.ingredients.len() as f64;
 
         let end = Pos2d::new(
             0.0,
-            -cur_height - game.images().image_height(&ingredient.image)
+            -cur_height - game.painter().images().image_height(&ingredient.image)
         );
 
         ingredient.pos.rebase(Some(self.pos.clone()), end, immediate);
@@ -222,7 +224,7 @@ impl IngredientStack {
     // Return the width of our stack of ingredients
     pub fn width(&self, game: &dyn BaseGame) -> f64 {
         let mut cur_max: f64 = 0.0;
-        let imgs = game.images();
+        let imgs = game.painter().images();
         for ing in self.ingredients.iter() {
             cur_max = cur_max.max(imgs.image_width(&ing.image));
         }
