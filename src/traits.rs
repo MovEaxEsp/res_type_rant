@@ -1,5 +1,6 @@
 
 use crate::painter::Painter;
+use crate::sounds::Sounds;
 use crate::utils::WordBank;
 
 pub trait BaseGame {
@@ -16,6 +17,8 @@ pub trait BaseGame {
     //fn images<'a>(&'a self) -> &'a Images;
 
     fn painter<'a>(&'a self) -> &'a Painter;
+
+    fn sounds(&self) -> &Sounds;
 
     //fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps;
 

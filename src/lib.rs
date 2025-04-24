@@ -6,6 +6,7 @@ mod keyword_entry;
 mod order_bar;
 mod painter;
 mod preparation_area;
+mod sounds;
 mod state_area;
 mod store;
 mod traits;
@@ -21,6 +22,7 @@ use order_bar::{OrderBar, OrderBarGameConfig, OrderBarUiConfig};
 use painter::{BackgroundConfig, Painter, TextConfig};
 use preparation_area::{PreparationArea, PreparationAreaConfig};
 use serde::{Serialize,Deserialize};
+use sounds::{Sounds, SoundsConfig};
 use state_area::{StateArea, StateGameConfig, StateUiConfig};
 use store::{StoreConfig, StoreUpgradeAction, StoreUpgradeConfig, UpgradeStore};
 use traits::BaseGame;
@@ -49,6 +51,7 @@ pub struct MoneyConfig {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UiConfig {
     pub images: ImagesConfig,
+    pub sounds: SoundsConfig,
     pub order_bar: OrderBarUiConfig,
     pub ingredient_area: IngredientAreaUiConfig,
     pub preparation_area: PreparationAreaConfig,
@@ -78,6 +81,7 @@ struct GameImp {
     cur_money: RefCell<i32>,
     words_bank: WordBank,
     painter: Painter,
+    sounds: Sounds,
     config: OuterConfig,
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
 }
@@ -93,6 +97,10 @@ impl BaseGame for GameImp {
 
     fn painter<'a>(&'a self) -> &'a Painter {
         &self.painter
+    }
+
+    fn sounds(&self) -> &Sounds {
+        &self.sounds
     }
 
     fn word_bank<'a>(&'a self) -> &'a WordBank {
@@ -274,7 +282,7 @@ impl GameState {
 static mut S_STATE: Option<Rc<RefCell<GameState>>> = None;
 
 #[wasm_bindgen]
-pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: JsValue, bad_words_db: JsValue) {
+pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, audio_ctx: JsValue, sounds: JsValue, words_db: JsValue, bad_words_db: JsValue) {
     set_panic_hook();
     
     let game_config: OuterConfig = serde_wasm_bindgen::from_value(config).unwrap();
@@ -296,10 +304,13 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, words_db: J
 
     let painter = Painter::new(painter_images, offscreen_context);
 
+    let sounds = Sounds::new(audio_ctx, sounds, &game_config.ui.sounds);
+
     let game_imp = GameImp {
         cur_money: RefCell::new(0),
         words_bank: words_bank,
         painter: painter,
+        sounds: sounds,
         config: game_config,
         elapsed_time: 0.0,
     };
@@ -374,6 +385,7 @@ pub fn default_config() -> JsValue {
     let cfg = OuterConfig {
         ui: UiConfig {
             images: Images::default_config(),
+            sounds: Sounds::default_config(),
             order_bar: OrderBar::default_ui_config(),
             ingredient_area: IngredientArea::default_ui_config(),
             preparation_area: PreparationArea::default_config(),

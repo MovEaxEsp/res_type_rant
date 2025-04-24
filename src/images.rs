@@ -31,7 +31,7 @@ pub enum Image {
 }
 
 // The base images used for drawing an image
-pub struct ImageProps {
+struct ImageProps {
     pub image: HtmlImageElement,
     pub gray_image: OffscreenCanvas,
     pub cfg: ImageConfig,

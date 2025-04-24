@@ -87,6 +87,23 @@
 
         });
 
+        let audioCtx = new AudioContext();
+
+        let sounds = {};
+        ["coins_1.ogg", "coins_2.ogg", "coins_3.ogg"]
+        .forEach(name => {
+          loadPromises.push(
+            window.fetch(`./audio/${name}`).then(async (response) => {
+              if (!response.ok) {
+                throw new Error(`Failed loading ${name}`);
+              }
+
+              let arrayBuf = await response.arrayBuffer();
+              sounds[name] = await audioCtx.decodeAudioData(arrayBuf);
+            })
+          );
+        });
+
         // Return promise that will resolve to the downloaded content
         function downloadDoc(url) {
           var xmlHttp = new XMLHttpRequest();
@@ -192,7 +209,16 @@
 
         //canvas = document.getElementById("myCanvas");
         startGameFn = () => {
-          init_state(gameConfig, canvas, images, wordsDb, badWordsDb);
+          init_state(gameConfig, canvas, images, audioCtx, sounds, wordsDb, badWordsDb);
+
+          // TODO remove once it's working in rust
+          Object.values(sounds).forEach(audioBuf => {
+            
+            const source = audioCtx.createBufferSource();
+            source.buffer = audioBuf;
+            source.connect(audioCtx.destination);
+            source.start();
+          });
         };
 
         startGameFn();

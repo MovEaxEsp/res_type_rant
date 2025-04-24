@@ -1,3 +1,4 @@
+const lAudioContext = (typeof AudioContext !== 'undefined' ? AudioContext : (typeof webkitAudioContext !== 'undefined' ? webkitAudioContext : undefined));
 let wasm;
 
 let WASM_VECTOR_LEN = 0;
@@ -170,11 +171,13 @@ function debugString(val) {
  * @param {any} config
  * @param {any} canvas
  * @param {any} images
+ * @param {any} audio_ctx
+ * @param {any} sounds
  * @param {any} words_db
  * @param {any} bad_words_db
  */
-export function init_state(config, canvas, images, words_db, bad_words_db) {
-    wasm.init_state(config, canvas, images, words_db, bad_words_db);
+export function init_state(config, canvas, images, audio_ctx, sounds, words_db, bad_words_db) {
+    wasm.init_state(config, canvas, images, audio_ctx, sounds, words_db, bad_words_db);
 }
 
 export function run_frame() {
@@ -272,6 +275,18 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_closePath_cf0e7130243e1083 = function(arg0) {
         arg0.closePath();
     };
+    imports.wbg.__wbg_connect_b22945d106632a36 = function() { return handleError(function (arg0, arg1) {
+        const ret = arg0.connect(arg1);
+        return ret;
+    }, arguments) };
+    imports.wbg.__wbg_createBufferSource_f7860a96f709acbd = function() { return handleError(function (arg0) {
+        const ret = arg0.createBufferSource();
+        return ret;
+    }, arguments) };
+    imports.wbg.__wbg_destination_6400091abd6f01b3 = function(arg0) {
+        const ret = arg0.destination;
+        return ret;
+    };
     imports.wbg.__wbg_done_769e5ede4b31c67b = function(arg0) {
         const ret = arg0.done;
         return ret;
@@ -344,6 +359,26 @@ function __wbg_get_imports() {
         let result;
         try {
             result = arg0 instanceof ArrayBuffer;
+        } catch (_) {
+            result = false;
+        }
+        const ret = result;
+        return ret;
+    };
+    imports.wbg.__wbg_instanceof_AudioBuffer_90cdee25b0de1242 = function(arg0) {
+        let result;
+        try {
+            result = arg0 instanceof AudioBuffer;
+        } catch (_) {
+            result = false;
+        }
+        const ret = result;
+        return ret;
+    };
+    imports.wbg.__wbg_instanceof_AudioContext_42857f219203dfa0 = function(arg0) {
+        let result;
+        try {
+            result = arg0 instanceof lAudioContext;
         } catch (_) {
             result = false;
         }
@@ -483,6 +518,9 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_set_65595bdd868b3009 = function(arg0, arg1, arg2) {
         arg0.set(arg1, arg2 >>> 0);
     };
+    imports.wbg.__wbg_setbuffer_10a9ee2a05c73896 = function(arg0, arg1) {
+        arg0.buffer = arg1;
+    };
     imports.wbg.__wbg_setfillStyle_cb059a69ce15cc28 = function(arg0, arg1, arg2) {
         arg0.fillStyle = getStringFromWasm0(arg1, arg2);
     };
@@ -511,6 +549,9 @@ function __wbg_get_imports() {
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
     };
+    imports.wbg.__wbg_start_95543bccc645f5b8 = function() { return handleError(function (arg0) {
+        arg0.start();
+    }, arguments) };
     imports.wbg.__wbg_static_accessor_GLOBAL_88a902d13a557d07 = function() {
         const ret = typeof global === 'undefined' ? null : global;
         return isLikeNone(ret) ? 0 : addToExternrefTable0(ret);

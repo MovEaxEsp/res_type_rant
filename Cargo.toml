@@ -30,7 +30,8 @@ wasm-bindgen-test = "0.3.34"
 
 [dependencies.web-sys]
 version = "0.3.77"
-features = ['CanvasRenderingContext2d', 'Document', 'Element', 'HtmlCanvasElement', 'HtmlImageElement',
+features = ['AudioBuffer', 'AudioBufferSourceNode', 'AudioContext', 'AudioDestinationNode', 'BaseAudioContext',
+            'CanvasRenderingContext2d', 'Document', 'Element', 'HtmlCanvasElement', 'HtmlImageElement',
             'Window', 'Crypto', 'OffscreenCanvas', 'OffscreenCanvasRenderingContext2d', 'CanvasGradient',
             'ImageData', 'TextMetrics']
 
