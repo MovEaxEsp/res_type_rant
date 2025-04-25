@@ -8,10 +8,19 @@ use std::collections::HashMap;
 #[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
 pub enum Sound {
     Coins,
+    Frying,
+    Done,
 }
 
 struct SoundProps {
     bufs: Vec<AudioBuffer>,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct PlaybackConfig {
+    pub sound: Sound,
+    pub play_length: Option<f64>,
+    pub random_start: bool
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -32,6 +41,8 @@ pub struct Sounds {
 
 impl Sounds {
     pub fn new(js_ctx: JsValue, js_sounds: JsValue, cfg: &SoundsConfig) -> Self {
+        let ctx = js_ctx.dyn_into::<AudioContext>().expect("audioctx");
+
         let mut self_sounds: HashMap<Sound, SoundProps> = HashMap::new();
 
         for snd_cfg in cfg.sounds.iter() {
@@ -50,13 +61,22 @@ impl Sounds {
         }
 
         Sounds {
-            ctx: js_ctx.dyn_into::<AudioContext>().expect("audioctx"),
+            ctx: ctx,
             sounds: self_sounds,
         }
     }
 
-    pub fn play_sound(&self, sound: &Sound) {
-        let props = &self.sounds[sound];
+    pub fn handle_first_input(&self) {
+        // HACK: play a sound quietly the first time the user types anything to avoid a lag the first
+        // time a sound is played
+        let src = self.ctx.create_buffer_source().expect("buf src");
+        let buf = &self.sounds[&Sound::Coins].bufs[0];
+        src.set_buffer(Some(buf));
+        src.start().expect("start");
+    }
+
+    pub fn play_sound(&self, cfg: &PlaybackConfig) {
+        let props = &self.sounds[&cfg.sound];
 
         // Pick random buffer to play from the sound's buffers
         let idx = (js_sys::Math::random() * props.bufs.len() as f64) as usize;
@@ -65,7 +85,17 @@ impl Sounds {
         let src = self.ctx.create_buffer_source().expect("buf src");
         src.set_buffer(Some(buf));
         src.connect_with_audio_node(&self.ctx.destination()).expect("connect");
-        src.start().expect("start");
+
+        let mut snd_duration = buf.duration();
+        let mut snd_offset = 0.0;
+        if let Some(dur) = &cfg.play_length {
+            snd_duration = *dur;
+            if cfg.random_start {
+                snd_offset = (buf.duration() - snd_duration) * js_sys::Math::random();
+            }
+        }
+
+        src.start_with_when_and_grain_offset_and_grain_duration(0.0, snd_offset, snd_duration).expect("play snd");
     }
 
     pub fn default_config() -> SoundsConfig {
@@ -79,6 +109,8 @@ impl Sounds {
         SoundsConfig {
             sounds: vec![
                 snd(Sound::Coins, vec!["coins_1.ogg", "coins_2.ogg", "coins_3.ogg"]),
+                snd(Sound::Frying, vec!["frying_1.ogg"]),
+                snd(Sound::Done, vec!["done_1.ogg"]),
             ]
         }
     }

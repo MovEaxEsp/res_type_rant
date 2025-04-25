@@ -65,6 +65,7 @@ pub struct UiConfig {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct GameConfig {
     pub word_level: i32,
+    pub unlock_all: bool,
     pub ingredient_area: IngredientAreaGameConfig,
     pub order_bar: OrderBarGameConfig,
     pub state: StateGameConfig,
@@ -127,6 +128,7 @@ struct GameState {
     store: UpgradeStore,
     state_area: StateArea,
     keyword_entry: KeywordEntry,
+    got_first_input: bool,
     frame_times: Vec<(Instant, Instant)>, // for measuring elapsed_time, fps
     fps_str: String,
     imp: GameImp,
@@ -163,7 +165,7 @@ impl GameState {
         else {
             self.order_bar.think(&self.imp, &self.imp.config.ui.order_bar, &self.imp.config.game.order_bar);
             self.ingredient_area.think(&self.imp);
-            self.preparation_area.think(&self.imp);
+            self.preparation_area.think(&self.imp.config.ui.preparation_area, &self.imp);
         }
     }
 
@@ -213,6 +215,23 @@ impl GameState {
         self.order_bar.set_available_ingredients(ings);
     }
 
+    fn process_store_upgrades(&mut self, upgrades: &Vec<StoreUpgradeConfig>) {
+        for upgr in upgrades.iter() {
+            match upgr.action {
+                StoreUpgradeAction::UnlockIngredient =>
+                    self.imp.config.game.ingredient_area.ingredients.push(upgr.img),
+                StoreUpgradeAction::UnlockCooker => 
+                    self.imp.config.ui.preparation_area.cookers.iter_mut()
+                        .filter(|c| c.base_image == upgr.img)
+                        .for_each(|c| c.num_unlocked += 1),
+            }
+        }
+
+        self.update_config(&self.imp.config.clone());
+
+        self.update_recipes();
+    }
+
     fn handle_command(&mut self) {
         let keywords = self.imp.painter.entered_keywords().clone();
 
@@ -221,20 +240,7 @@ impl GameState {
 
             self.store.handle_command(&keywords, &mut upgrades, self.imp.word_bank(), &self.imp, &self.imp.config.ui.store);
 
-            for upgr in upgrades.iter() {
-                match upgr.action {
-                    StoreUpgradeAction::UnlockIngredient =>
-                        self.imp.config.game.ingredient_area.ingredients.push(upgr.img),
-                    StoreUpgradeAction::UnlockCooker => 
-                        self.imp.config.ui.preparation_area.cookers.iter_mut()
-                            .filter(|c| c.base_image == upgr.img)
-                            .for_each(|c| c.num_unlocked += 1),
-                }
-            }
-
-            self.update_config(&self.imp.config.clone());
-
-            self.update_recipes();
+            self.process_store_upgrades(&upgrades);
 
             self.state_area.handle_command(&keywords,&self.imp);
 
@@ -261,6 +267,11 @@ impl GameState {
     }
 
     fn handle_key(&mut self, key: &str, _state_rc: &Rc<RefCell<GameState>>) {
+        if !self.got_first_input {
+            self.imp.sounds.handle_first_input();
+            self.got_first_input = true;
+        }
+
         if self.keyword_entry.handle_key(key, self.imp.painter.entered_keywords()) {
             self.handle_command();
             self.imp.painter.entered_keywords().clear();
@@ -333,6 +344,7 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, audio_ctx: 
         preparation_area: preparation_area,
         store: store,
         keyword_entry: keyword_entry,
+        got_first_input: false,
         state_area: state_area,
         frame_times: Vec::new(),
         imp: game_imp,
@@ -342,6 +354,12 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, audio_ctx: 
     state.frame_times.push((Instant::now(), Instant::now()));
 
     state.update_recipes();
+
+    if state.imp.config.game.unlock_all {
+        let mut upgrades: Vec<StoreUpgradeConfig> = Vec::new();
+        state.store.unlock_all(&mut upgrades, &state.imp.config.ui.store);
+        state.process_store_upgrades(&upgrades);
+    }
 
     unsafe {
         S_STATE = Some(Rc::new(RefCell::new(state)));
@@ -380,9 +398,8 @@ pub fn report_keypress(key: &str) {
     }
 }
 
-#[wasm_bindgen]
-pub fn default_config() -> JsValue {
-    let cfg = OuterConfig {
+pub fn build_default_config() -> OuterConfig {
+    OuterConfig {
         ui: UiConfig {
             images: Images::default_config(),
             sounds: Sounds::default_config(),
@@ -429,18 +446,21 @@ pub fn default_config() -> JsValue {
         },
         game: GameConfig {
             word_level: 0,
+            unlock_all: false,
             ingredient_area: IngredientArea::default_game_config(),
             order_bar: OrderBar:: default_game_config(),
             state: StateArea::default_game_config(),
         }
-    };
+    }
+}
 
-    serde_wasm_bindgen::to_value(&cfg).unwrap()
+#[wasm_bindgen]
+pub fn default_config() -> JsValue {
+    serde_wasm_bindgen::to_value(&build_default_config()).unwrap()
 }
 
 #[wasm_bindgen]
 pub fn update_config(config: JsValue) {
-
     match serde_wasm_bindgen::from_value::<OuterConfig>(config) {
         Ok(cfg) => {
             unsafe {
@@ -453,4 +473,22 @@ pub fn update_config(config: JsValue) {
             log(&format!("Failed parsing config: {}", e));
         }
     }
+}
+
+#[wasm_bindgen]
+pub fn resource_names() -> JsValue {
+    #[derive(Serialize)]
+    pub struct ResourceList {
+        pub images: Vec<String>,
+        pub sounds: Vec<String>,
+    }
+
+    let cfg = build_default_config();
+
+    let resources = ResourceList {
+        images: cfg.ui.images.images.iter().map(|img| img.image_name.clone()).collect(),
+        sounds: cfg.ui.sounds.sounds.iter().flat_map(|snd| snd.sound_names.iter().cloned()).collect(),
+    };
+
+    serde_wasm_bindgen::to_value(&resources).unwrap()
 }

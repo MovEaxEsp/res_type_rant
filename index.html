@@ -33,7 +33,7 @@
       // will "boot" the module and make it ready to use. Currently browsers
       // don't support natively imported WebAssembly as an ES module, but
       // eventually the manual initialization won't be required!
-      import init, { run_frame, report_keypress, init_state, default_config, update_config } from './pkg/res_type_rant.js';
+      import init, { run_frame, report_keypress, init_state, default_config, resource_names, update_config } from './pkg/res_type_rant.js';
 
       let startGameFn = null;
 
@@ -66,15 +66,12 @@
         // modes
         await init();
 
+        const resources = resource_names();
+
         const images = {};
         
         const loadPromises = [];
-        ["bacon_cooked.png", "bacon_raw.png", "burger_bottom.png", "burger_top.png", "cooked_patty.png", "curry.png", "curry_crab.png",
-         "dumplings.png", "eggs_fried.png", "eggs_raw.png", "flour.png", "lettuce_leaf.png", "open_sign.png",
-         "overlay_plus.png", "pan.png", "plate.png", "raw_crab.png",
-         "raw_patty.png", "tomato_slice.png", "trini_pot.png"
-        ]
-        .forEach(name => {
+        resources.images.forEach(name => {
           let img = new Image()
 
           let imgPromise = new Promise((resolve, _) => {
@@ -90,8 +87,7 @@
         let audioCtx = new AudioContext();
 
         let sounds = {};
-        ["coins_1.ogg", "coins_2.ogg", "coins_3.ogg"]
-        .forEach(name => {
+        resources.sounds.forEach(name => {
           loadPromises.push(
             window.fetch(`./audio/${name}`).then(async (response) => {
               if (!response.ok) {
@@ -210,15 +206,6 @@
         //canvas = document.getElementById("myCanvas");
         startGameFn = () => {
           init_state(gameConfig, canvas, images, audioCtx, sounds, wordsDb, badWordsDb);
-
-          // TODO remove once it's working in rust
-          Object.values(sounds).forEach(audioBuf => {
-            
-            const source = audioCtx.createBufferSource();
-            source.buffer = audioBuf;
-            source.connect(audioCtx.destination);
-            source.start();
-          });
         };
 
         startGameFn();

@@ -109,6 +109,15 @@ impl UpgradeStore {
         }
     }
 
+    pub fn unlock_all(&mut self, upgrades: &mut Vec<StoreUpgradeConfig>, cfg: &StoreConfig) {
+        for (cfg_upgrs, upgr_info) in cfg.upgrades.iter().zip(self.upgrades.iter_mut()) {
+            for upgr in cfg_upgrs {
+                upgrades.push(upgr.clone());
+                upgr_info.idx += 1;
+            }
+        }
+    }
+
     pub fn default_config() -> StoreConfig {
         fn suc(img: Image, overlay: Image, cost: i32, action: StoreUpgradeAction) -> StoreUpgradeConfig {
             StoreUpgradeConfig {

@@ -3,7 +3,7 @@ use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
 use crate::painter::{BackgroundConfig, ProgressBarConfig, TextConfig};
-use crate::sounds::Sound;
+use crate::sounds::{PlaybackConfig, Sound};
 use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
@@ -42,6 +42,7 @@ pub struct OrderBarUiConfig {
     pub text_keyword: TextConfig,
     pub text_remaining: TextConfig,
     pub progress_bar: ProgressBarConfig,
+    pub money_sound: PlaybackConfig,
     pub orders: Vec<OrderConfig>,
 }
 
@@ -177,7 +178,7 @@ impl OrderBar {
                 if think_ret.pos_done {
                     if order.state == OrderBarStackState::Serving {
                         game.add_money(self.orders[order_idx].price);
-                        game.sounds().play_sound(&Sound::Coins);
+                        game.sounds().play_sound(&cfg_ui.money_sound);
                         served_idx = order_idx;
                     }
                 }
@@ -395,6 +396,11 @@ impl OrderBar {
                 },
                 done_alpha: 1.0,
                 done_style: "yellow".to_string(),
+            },
+            money_sound: PlaybackConfig {
+                sound: Sound::Coins,
+                play_length: None,
+                random_start: false
             },
             orders: vec![
                 OrderConfig { // Burger

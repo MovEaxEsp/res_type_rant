@@ -3,6 +3,7 @@ use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
 use crate::painter::{BackgroundConfig, ProgressBarConfig, TextConfig};
+use crate::sounds::{PlaybackConfig, Sound};
 use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
@@ -30,6 +31,8 @@ pub struct CookerConfig {
     pub base_offset: Pos2d,
     pub instances: Vec<Pos2d>,
     pub num_unlocked: i32,
+    pub cooking_sound: PlaybackConfig,
+    pub done_cooking_sound: PlaybackConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -76,7 +79,7 @@ impl PreparationAreaStack {
         }
     }
 
-    fn think(&mut self, game: &dyn BaseGame) {
+    fn think(&mut self, cfg: &CookerConfig, game: &dyn BaseGame) {
         if !self.is_unlocked {
             return;
         }
@@ -94,12 +97,20 @@ impl PreparationAreaStack {
                 progress.set_cur(0.0);
                 progress.set_end(0.0);
             }
+
+            game.sounds().play_sound(&cfg.done_cooking_sound);
         }
 
         if ret.ingredient_arrived {
             // Start cooking
             for progress in self.stack.progress.iter() {
                 progress.set_end(1.0);
+
+                // Figure out how long to play the sound for
+                let mut snd_cfg = cfg.cooking_sound.clone();
+                snd_cfg.play_length = Some(1.0/progress.speed());
+
+                game.sounds().play_sound(&snd_cfg);
             }
         }
     }
@@ -275,10 +286,10 @@ impl PreparationArea {
     }
 
     /// Update our state for the current frame
-    pub fn think(&mut self, game: &dyn BaseGame) {
-        for cooker_type in self.cookers.iter_mut() {
+    pub fn think(&mut self, cfg: &PreparationAreaConfig, game: &dyn BaseGame) {
+        for (cooker_type, cfg) in self.cookers.iter_mut().zip(cfg.cookers.iter()) {
             for inst in cooker_type.iter_mut() {
-                inst.think(game);
+                inst.think(cfg, game);
             }
         }
 
@@ -372,6 +383,16 @@ impl PreparationArea {
                 CookerConfig {
                     base_image: Image::Pan,
                     base_offset: (-10, 10).into(),
+                    cooking_sound: PlaybackConfig {
+                        sound: Sound::Frying,
+                        play_length: None, // will be overwritten with the actual length
+                        random_start: true,
+                    },
+                    done_cooking_sound: PlaybackConfig {
+                        sound: Sound::Done,
+                        play_length: None,
+                        random_start: false,
+                    },
                     recipes: vec![
                         CookingRecipe {
                             inputs: vec![Image::RawPatty],
@@ -395,6 +416,16 @@ impl PreparationArea {
                 CookerConfig {
                     base_image: Image::TriniPot,
                     base_offset: (0, 10).into(),
+                    cooking_sound: PlaybackConfig {
+                        sound: Sound::Frying,
+                        play_length: None, // will be overwritten with the actual length
+                        random_start: true,
+                    },
+                    done_cooking_sound: PlaybackConfig {
+                        sound: Sound::Done,
+                        play_length: None,
+                        random_start: false,
+                    },
                     recipes: vec![
                         CookingRecipe {
                             inputs: vec![Image::RawCrab, Image::Curry],

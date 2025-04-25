@@ -208,6 +208,14 @@ export function update_config(config) {
     wasm.update_config(config);
 }
 
+/**
+ * @returns {any}
+ */
+export function resource_names() {
+    const ret = wasm.resource_names();
+    return ret;
+}
+
 async function __wbg_load(module, imports) {
     if (typeof Response === 'function' && module instanceof Response) {
         if (typeof WebAssembly.instantiateStreaming === 'function') {
@@ -303,6 +311,10 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_drawImage_bace06830ea9b05d = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
         arg0.drawImage(arg1, arg2, arg3, arg4, arg5);
     }, arguments) };
+    imports.wbg.__wbg_duration_565c591afbce80ca = function(arg0) {
+        const ret = arg0.duration;
+        return ret;
+    };
     imports.wbg.__wbg_entries_3265d4158b33e5dc = function(arg0) {
         const ret = Object.entries(arg0);
         return ret;
@@ -551,6 +563,9 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_start_95543bccc645f5b8 = function() { return handleError(function (arg0) {
         arg0.start();
+    }, arguments) };
+    imports.wbg.__wbg_start_c5cd9fcfbb237380 = function() { return handleError(function (arg0, arg1, arg2, arg3) {
+        arg0.start(arg1, arg2, arg3);
     }, arguments) };
     imports.wbg.__wbg_static_accessor_GLOBAL_88a902d13a557d07 = function() {
         const ret = typeof global === 'undefined' ? null : global;
