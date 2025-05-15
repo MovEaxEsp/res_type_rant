@@ -46,12 +46,17 @@ impl Sounds {
         let mut self_sounds: HashMap<Sound, SoundProps> = HashMap::new();
 
         for snd_cfg in cfg.sounds.iter() {
-            let variations: Vec<AudioBuffer> =
-                snd_cfg.sound_names.iter()
-                .map(|name| 
-                    js_sys::Reflect::get(&js_sounds, &name.into()).expect("snd")
-                    .dyn_into::<AudioBuffer>().expect("audiobuf"))
-                .collect();
+            let mut variations: Vec<AudioBuffer> = Vec::new();
+            for name in snd_cfg.sound_names.iter() {
+                match js_sys::Reflect::get(&js_sounds, &name.into()).expect("sndKey").dyn_into::<AudioBuffer>() {
+                    Ok(buf) => variations.push(buf),
+                    Err(_e) => (),
+                }
+            }
+            
+            if variations.is_empty() {
+                continue;
+            }
 
             self_sounds.insert(
                 snd_cfg.sound.clone(),
@@ -69,6 +74,12 @@ impl Sounds {
     pub fn handle_first_input(&self) {
         // HACK: play a sound quietly the first time the user types anything to avoid a lag the first
         // time a sound is played
+
+        if !self.sounds.contains_key(&Sound::Coins) {
+            // We don't have any sounds, so nothing to play
+            return;
+        }
+
         let src = self.ctx.create_buffer_source().expect("buf src");
         let buf = &self.sounds[&Sound::Coins].bufs[0];
         src.set_buffer(Some(buf));
@@ -76,6 +87,11 @@ impl Sounds {
     }
 
     pub fn play_sound(&self, cfg: &PlaybackConfig) {
+        if !self.sounds.contains_key(&cfg.sound) {
+            // Don't have the sound to play
+            return;
+        }
+
         let props = &self.sounds[&cfg.sound];
 
         // Pick random buffer to play from the sound's buffers

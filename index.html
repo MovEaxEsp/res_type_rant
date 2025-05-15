@@ -66,7 +66,18 @@
         // modes
         await init();
 
+        const paramsString = window.location.search;
+        const searchParams = new URLSearchParams(paramsString);
+
+        if (!searchParams.has("editConfig")) {
+          document.getElementById("configArea").style.display = "none";
+        }
+
         const resources = resource_names();
+
+        if (searchParams.has("noSounds")) {
+          resources.sounds = [];
+        }
 
         const images = {};
         
@@ -235,14 +246,16 @@
 </div>
 
 <button type="button" id="restartButton">Restart</button>
-<div id="jsoneditor" style="width: 400px; height: 400px;"></div>
 
-<textarea id="config" rows="20" cols="80"> </textarea>
+<div id="configArea">
+  <div id="jsoneditor" style="width: 400px; height: 400px;"></div>
 
-<textarea id="diffArea" rows="20", cols="80"></textarea>
+  <textarea id="config" rows="20" cols="80"> </textarea>
+
+  <textarea id="diffArea" rows="20", cols="80"></textarea>
+</div>
 
 <!--<div id="editorjs" style="border: 1px solid black; height:200px;width:500px"></div>-->
-
 
 <!--<canvas id="canvas" style="border: 1px solid black" width="1920" height="1080"></canvas>-->
 </body>
