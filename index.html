@@ -75,9 +75,13 @@
 
         const resources = resource_names();
 
-        if (searchParams.has("noSounds")) {
+        // Figure out if device can play ogg
+        let canPlayOgg = !!(new Audio()).canPlayType("audio/ogg");
+
+        if (searchParams.has("noSounds") || !canPlayOgg) {
           resources.sounds = [];
         }
+
 
         const images = {};
         
@@ -246,6 +250,9 @@
 </div>
 
 <button type="button" id="restartButton">Restart</button>
+
+<!-- This is here to let phones/ipads show the keyboard-->
+<input>
 
 <div id="configArea">
   <div id="jsoneditor" style="width: 400px; height: 400px;"></div>
