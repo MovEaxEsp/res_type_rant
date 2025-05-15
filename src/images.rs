@@ -2,7 +2,8 @@
 use serde::{Serialize,Deserialize};
 
 use wasm_bindgen::prelude::*;
-use web_sys::{HtmlImageElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
+use wasm_bindgen::Clamped;
+use web_sys::{ImageData, HtmlImageElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
 
 use std::collections::HashMap;
 
@@ -70,12 +71,25 @@ impl Images {
             let gray_context = gray_canvas.get_context("2d").unwrap().unwrap()
                                 .dyn_into::<OffscreenCanvasRenderingContext2d>().unwrap();
 
-            gray_context.set_filter("grayscale(1.0)");
             gray_context.draw_image_with_html_image_element(
                 &htmlimg,
                 0.0,
                 0.0)
             .expect("draw");
+            
+            let img_data = gray_context.get_image_data(0.0, 0.0, htmlimg.width() as f64, htmlimg.height() as f64).expect("gray imgdata");
+            let mut img_arr = img_data.data();
+            
+            for i in 0..img_arr.len()/4 {
+                // From https://tannerhelland.com/2011/10/01/grayscale-image-algorithm-vb6.html
+                let pixel_val = (img_arr[i*4] as f64* 0.299 + img_arr[i*4+1] as f64 * 0.587 + img_arr[i*4+2] as f64 * 0.114) as u8;
+                img_arr[i*4] = pixel_val;
+                img_arr[i*4 + 1] = pixel_val;
+                img_arr[i*4 + 2] = pixel_val;
+            }
+            
+            let image_data_temp = ImageData::new_with_u8_clamped_array(Clamped(&img_arr.0[..]), htmlimg.width()).expect("new imagedata");
+            gray_context.put_image_data(&image_data_temp, 0.0, 0.0).expect("pub image data");
 
             self_images.insert(
                 img_cfg.image,
