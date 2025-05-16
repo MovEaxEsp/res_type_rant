@@ -75,8 +75,8 @@
 
         const resources = resource_names();
 
-        // Figure out if device can play ogg
-        let canPlayOgg = !!(new Audio()).canPlayType("audio/ogg");
+        // Figure out if device can play mp3s
+        let canPlayOgg = !!(new Audio()).canPlayType("audio/mp3s");
 
         if (searchParams.has("noSounds") || !canPlayOgg) {
           resources.sounds = [];

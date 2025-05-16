@@ -124,9 +124,9 @@ impl Sounds {
 
         SoundsConfig {
             sounds: vec![
-                snd(Sound::Coins, vec!["coins_1.ogg", "coins_2.ogg", "coins_3.ogg"]),
-                snd(Sound::Frying, vec!["frying_1.ogg"]),
-                snd(Sound::Done, vec!["done_1.ogg"]),
+                snd(Sound::Coins, vec!["coins_1.mp3", "coins_2.mp3", "coins_3.mp3"]),
+                snd(Sound::Frying, vec!["frying_1.mp3"]),
+                snd(Sound::Done, vec!["done_1.mp3"]),
             ]
         }
     }
