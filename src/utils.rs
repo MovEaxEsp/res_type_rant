@@ -1,3 +1,4 @@
+use itertools::Itertools;
 use std::collections::HashSet;
 use std::rc::Rc;
 use js_sys::Math;
@@ -30,17 +31,12 @@ impl WordBank {
     // contains a word per line, along with a 'frequency' count of how often that
     // word is used.
     pub fn new(words_db: &String, bad_words_db: &String, word_level: usize) -> Self {
-        let mut ret:Vec<Rc<String>> = Vec::new();
-        
         if word_level == 0 {
             // Level 0 is just 2-letter combinations of characters
-            for c_1 in 'a'..'z' {
-                for c_2 in 'a'..'z' {
-                    ret.push(Rc::new([c_1, c_2].iter().collect()));
-                }
-            }
             return WordBank {
-                words: ret,
+                words: ('a'..'z').cartesian_product('a'..'z')
+                       .map(|e| Rc::new([e.0, e.1].iter().collect()))
+                       .collect()
             };
         }
 
@@ -54,6 +50,7 @@ impl WordBank {
         }
 
         let mut processed_words= 0;
+        let mut ret:Vec<Rc<String>> = Vec::new();
         for line in words_db.split('\n') {
             if line.len() == 0 {
                 continue;

@@ -2,7 +2,7 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::interpolable::{Interpolable, Pos2d};
-use crate::painter::{BackgroundConfig, RingConfig, TextConfig};
+use crate::painter::{BackgroundConfig, ProgressBarConfig, RingConfig, TextConfig};
 use crate::traits::BaseGame;
 
 use serde::{Serialize,Deserialize};
@@ -19,22 +19,28 @@ pub struct StateUiConfig {
     pub clock_r2: f64,
 
     // Open Store config
-    pub open_text: TextConfig
+    pub text: TextConfig,
+    pub progress: ProgressBarConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct StateGameConfig {
     pub day_length: f64,
+    pub money_down_sec: f64,
+    pub money_down_amt: i32,
 }
 
-pub struct StateAreaThinkResult {
-    pub enter_store: bool,
-    pub enter_game: bool,
+#[derive(PartialEq)]
+enum StoreState {
+    Open,
+    Closing,
+    Closed,
 }
 
 pub struct StateArea {
     clock_progress: Interpolable<f64>,
-    open_store_stack: IngredientStack,
+    open_close_store_stack: IngredientStack,
+    state: StoreState,
 }
 
 impl StateArea {
@@ -42,47 +48,66 @@ impl StateArea {
         let clock_progress = Interpolable::new(0.0, 1.0);
         clock_progress.set_end(cfg_game.day_length);
 
-        let mut open_store_stack = IngredientStack::new(Interpolable::new(cfg_ui.pos, 1000.0));
-        open_store_stack.text = Some(game.word_bank().get_new_word());
-        open_store_stack.add_ingredient(MovableIngredient::new(Image::OpenSign, Interpolable::new((0,0).into(), 1000.0)), true, game);
+        let mut store_stack = IngredientStack::new(Interpolable::new(cfg_ui.pos, 1000.0));
+        store_stack.text = Some(game.word_bank().get_new_word());
+        store_stack.add_ingredient(MovableIngredient::new(Image::OpenSign, Interpolable::new((0,0).into(), 1000.0)), true, game);
 
         StateArea {
             clock_progress: clock_progress,
-            open_store_stack: open_store_stack,
+            open_close_store_stack: store_stack,
+            state: StoreState::Open,
         }
     }
 
     pub fn handle_command(&mut self, keywords: &Vec<String>, game: &dyn BaseGame) {
-        if self.in_store() {
-            if let Some(kw) = &self.open_store_stack.text {
+        if self.state == StoreState::Closing {
+            if let Some(kw) = &self.open_close_store_stack.text {
+                if keywords.iter().any(|k| *k == **kw) {
+                    // Become 'closed' and show the store
+                    self.open_close_store_stack.text = Some(game.word_bank().get_new_word());
+                    self.open_close_store_stack.progress = None;
+                    self.state = StoreState::Closed;
+                }
+            }
+        }
+        else if self.state == StoreState::Closed {
+            if let Some(kw) = &self.open_close_store_stack.text {
                 if keywords.iter().any(|k| *k == **kw) {
                     // Restart the 'day' timer
                     self.clock_progress.set_cur(0.0);
-                    self.open_store_stack.text = Some(game.word_bank().get_new_word());
+                    self.open_close_store_stack.text = Some(game.word_bank().get_new_word());
+                    self.state = StoreState::Open;
                 }
             }
         }
     }
 
-    pub fn think(&mut self, game: &dyn BaseGame) -> StateAreaThinkResult {
-        let ret = StateAreaThinkResult {
-            enter_store: self.clock_progress.advance(game.elapsed_time()),
-            enter_game: false,
-        };
+    pub fn think(&mut self, cfg_game: &StateGameConfig, game: &dyn BaseGame) {
+        if self.state == StoreState::Open {
+            // Advance the day time
+            if self.clock_progress.advance(game.elapsed_time()) {
+                // Move to 'closing'
+                self.state = StoreState::Closing;
+                
+                let money_state = Interpolable::new(0.0, 1.0/cfg_game.money_down_sec);
+                money_state.set_end(1.0);
 
-        // TODO remove when these are used elsewhere
-        ret.enter_store;
-        ret.enter_game;
-
-        ret
+                self.open_close_store_stack.progress = Some(money_state);
+            }
+        }
+        else if self.state == StoreState::Closing {
+            // Advance the 'money down' timer
+            if  let Some(money_progress) = &self.open_close_store_stack.progress {
+                if money_progress.advance(game.elapsed_time()) {
+                    game.add_money(cfg_game.money_down_amt);
+                    money_progress.set_cur(0.0);
+                }
+            }
+        }
     }
 
     pub fn draw(&self, cfg_ui: &StateUiConfig, cfg_game: &StateGameConfig, game: &dyn BaseGame) {
-        if self.in_store() {
-            // Draw stack to go back to the game
-            self.open_store_stack.draw(game, None, Some(&cfg_ui.open_text), None);
-        }
-        else {
+        if self.state == StoreState::Open {
             // Show the 'clock'
             let mut ring = RingConfig {
                 stroke: false,
@@ -96,15 +121,18 @@ impl StateArea {
             ring.style = "purple".to_string();
             game.painter().draw_ring(&cfg_ui.pos, cfg_ui.clock_r1, cfg_ui.clock_r2, PI, 0.0, &ring); 
         }
-
+        else {
+            // Draw stack to show open/closed sign
+            self.open_close_store_stack.draw(game, Some(&cfg_ui.progress), Some(&cfg_ui.text), None);
+        }
     }
 
     pub fn in_store(&self) -> bool {
-        !self.clock_progress.is_moving()
+        self.state == StoreState::Closed
     }
 
     pub fn update_config(&mut self, cfg_ui: &StateUiConfig, cfg_game: &StateGameConfig) {
-        self.open_store_stack.pos.set_end(cfg_ui.pos);
+        self.open_close_store_stack.pos.set_end(cfg_ui.pos);
         self.clock_progress.set_end(cfg_game.day_length);
     }
 
@@ -124,7 +152,7 @@ impl StateArea {
             },
             clock_r1: 150.0,
             clock_r2: 50.0,
-            open_text: TextConfig {
+            text: TextConfig {
                 offset: (0, 0).into(),
                 stroke: false,
                 style: "yellow".to_string(),
@@ -134,12 +162,30 @@ impl StateArea {
                 alpha: 0.4,
                 is_command: true,
             },
+            progress: ProgressBarConfig {
+                bg: BackgroundConfig {
+                    offset: (0, 0).into(),
+                    width: 200.0,
+                    height: 5.0,
+                    corner_radius: 0.0,
+                    border_style: "black".to_string(),
+                    border_alpha: 0.0,
+                    border_width: 0.0,
+                    bg_style: "black".to_string(),
+                    bg_alpha: 0.4
+                },
+                done_alpha: 1.0,
+                done_style: "yellow".to_string(),
+                
+            }
         }
     }
 
     pub fn default_game_config() -> StateGameConfig {
         StateGameConfig {
-            day_length: 75.0
+            day_length: 90.0,
+            money_down_sec: 3.0,
+            money_down_amt: -1,
         }
     }
 }
