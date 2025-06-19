@@ -42,10 +42,15 @@ extern "C" {
 }
 
 #[derive(Serialize, Deserialize, Clone)]
-pub struct MoneyConfig {
+pub struct MoneyUiConfig {
     pub pos: Pos2d,
     pub bg: BackgroundConfig,
     pub text: TextConfig,
+}
+
+#[derive(Serialize, Deserialize, Clone)]
+pub struct MoneyGameConfig {
+    pub starting_money: i32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -55,7 +60,7 @@ pub struct UiConfig {
     pub order_bar: OrderBarUiConfig,
     pub ingredient_area: IngredientAreaUiConfig,
     pub preparation_area: PreparationAreaConfig,
-    pub money: MoneyConfig,
+    pub money: MoneyUiConfig,
     pub store: StoreConfig,
     pub keyword_entry: KeywordEntryUiConfig,
     pub fps: TextConfig,
@@ -69,6 +74,7 @@ pub struct GameConfig {
     pub ingredient_area: IngredientAreaGameConfig,
     pub order_bar: OrderBarGameConfig,
     pub state: StateGameConfig,
+    pub money: MoneyGameConfig,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -319,7 +325,7 @@ pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, audio_ctx: 
     let sounds = Sounds::new(audio_ctx, sounds, &game_config.ui.sounds);
 
     let game_imp = GameImp {
-        cur_money: RefCell::new(0),
+        cur_money: RefCell::new(game_config.game.money.starting_money),
         words_bank: words_bank,
         painter: painter,
         sounds: sounds,
@@ -410,7 +416,7 @@ pub fn build_default_config() -> OuterConfig {
             store: UpgradeStore::default_config(),
             keyword_entry: KeywordEntry::default_ui_config(),
             state: StateArea::default_ui_config(),
-            money: MoneyConfig {
+            money: MoneyUiConfig {
                 pos: (50, 50).into(),
                 bg: BackgroundConfig {
                     offset: (0, -20).into(),
@@ -451,6 +457,9 @@ pub fn build_default_config() -> OuterConfig {
             ingredient_area: IngredientArea::default_game_config(),
             order_bar: OrderBar:: default_game_config(),
             state: StateArea::default_game_config(),
+            money: MoneyGameConfig {
+                starting_money: 0,
+            },
         }
     }
 }
