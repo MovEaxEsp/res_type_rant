@@ -166,10 +166,7 @@
         }, true)
 
 
-        let gameConfig = {...default_config(), ...{
-          word_level: 0,
-          draw_borders: false,
-        }};
+        let gameConfig = default_config();
 
         let originalCfg = JSON.parse(JSON.stringify(gameConfig));
 
@@ -219,13 +216,16 @@
         canvas.height = canvasDiv.clientHeight;
 
         //canvas = document.getElementById("myCanvas");
-        startGameFn = () => {
+        startGameFn = (difficulty) => {
+          gameConfig.game.word_level = difficulty;
           init_state(gameConfig, canvas, images, audioCtx, sounds, wordsDb, badWordsDb);
         };
 
-        startGameFn();
+        startGameFn(1);
 
-        document.getElementById("restartButton").addEventListener("click", startGameFn);
+        document.getElementById("restartEasy").addEventListener("click", () => startGameFn(0));
+        document.getElementById("restartNormal").addEventListener("click", () => startGameFn(1));
+        document.getElementById("restartHard").addEventListener("click", () => startGameFn(2));
 
         //canvas.width = screen.width;
         //canvas.height = screen.height;
@@ -249,7 +249,9 @@
   <canvas id="canvas" style="border: 1px solid black;height:100%;width:100%"></canvas>
 </div>
 
-<button type="button" id="restartButton">Restart</button>
+<button type="button" id="restartEasy">Restart (Easy)</button>
+<button type="button" id="restartNormal">Restart (Normal)</button>
+<button type="button" id="restartHard">Restart (Hard)</button>
 
 <!-- This is here to let phones/ipads show the keyboard-->
 <input>

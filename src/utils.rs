@@ -1,6 +1,7 @@
 use std::collections::HashSet;
 use std::rc::Rc;
 use js_sys::Math;
+use wasm_bindgen::prelude::*;
 
 pub fn set_panic_hook() {
     // When the `console_error_panic_hook` feature is enabled, we can call the
@@ -13,6 +14,12 @@ pub fn set_panic_hook() {
     console_error_panic_hook::set_once();
 }
 
+#[wasm_bindgen]
+extern "C" {
+    #[wasm_bindgen(js_namespace = console)]
+    fn log(s: &str);
+}
+
 pub struct WordBank {
     words: Vec<Rc<String>>,
 }
@@ -23,6 +30,20 @@ impl WordBank {
     // contains a word per line, along with a 'frequency' count of how often that
     // word is used.
     pub fn new(words_db: &String, bad_words_db: &String, word_level: usize) -> Self {
+        let mut ret:Vec<Rc<String>> = Vec::new();
+        
+        if word_level == 0 {
+            // Level 0 is just 2-letter combinations of characters
+            for c_1 in 'a'..'z' {
+                for c_2 in 'a'..'z' {
+                    ret.push(Rc::new([c_1, c_2].iter().collect()));
+                }
+            }
+            return WordBank {
+                words: ret,
+            };
+        }
+
         let mut bad_words: HashSet<String> = HashSet::new();
         for line in bad_words_db.split('\n') {
             if line.contains(' ') {
@@ -31,8 +52,6 @@ impl WordBank {
 
             bad_words.insert(line.to_string());
         }
-
-        let mut ret:Vec<Rc<String>> = Vec::new();
 
         let mut processed_words= 0;
         for line in words_db.split('\n') {
@@ -63,17 +82,17 @@ impl WordBank {
 
             processed_words += 1;
 
-            // Figure out the word's difficulty, from 0(easiest) to 4(hardest)
+            // Figure out the word's difficulty, from 1(easiest) to 5(hardest)
             // for 4+ chars, difficulty is 'len - 4'
             // words within 70% of max_count get +0, 50% +1, 30% +2, <30% +3
 
-            let mut word_score = processed_words/20000;
+            let mut word_score = processed_words/20000 + 1;
             if word.len() > 4 {
                 word_score += word.len() - 4;
             }
 
-            if word_score > 4 {
-                word_score = 4;
+            if word_score > 5 {
+                word_score = 5;
             }
 
             if word_score == word_level {
