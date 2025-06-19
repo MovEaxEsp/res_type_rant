@@ -235,9 +235,10 @@ impl GameState {
     fn handle_command(&mut self) {
         let keywords = self.imp.painter.entered_keywords().clone();
 
+        let was_in_store= self.state_area.in_store();
         self.state_area.handle_command(&keywords,&self.imp);
 
-        if self.state_area.in_store() {
+        if was_in_store {
             let mut upgrades: Vec<StoreUpgradeConfig> = Vec::new();
 
             self.store.handle_command(&keywords, &mut upgrades, self.imp.word_bank(), &self.imp, &self.imp.config.ui.store);
