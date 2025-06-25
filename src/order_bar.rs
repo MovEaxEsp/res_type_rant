@@ -183,24 +183,17 @@ impl OrderBar {
                     }
                 }
             }
-
-            if think_ret.start_serving {
-                let mut xpos = cfg_ui.order_margin;
-                for i in 0..order_idx {
-                    let order = &self.orders[i];
-                    xpos += order.stack.width(game) + cfg_ui.order_margin;
-                }
-
-                for i in (order_idx+1)..self.orders.len() {
-                    self.orders[i].stack.pos.set_end((xpos, 0).into());
-                    xpos += self.orders[i].stack.width(game) + cfg_ui.order_margin;
-                }    
-            }
         }
 
         if served_idx != MAX {
             self.orders.remove(served_idx);
 
+            // Update positions of all our orders
+            let mut xpos = cfg_ui.order_margin;
+            for ord in self.orders.iter_mut() {
+                ord.stack.pos.set_end((xpos, 0).into());
+                xpos += ord.stack.width(game) + cfg_ui.order_margin;
+            }
             
             if self.orders.len() < 5 {
                 self.new_item_timer.set_cur(0.0);
