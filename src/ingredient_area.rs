@@ -1,10 +1,10 @@
 
 use crate::images::Image;
 use crate::ingredients::{MovableIngredient, IngredientStack};
-use crate::interpolable::{Interpolable, Pos2d};
 use crate::painter::{BackgroundConfig, TextConfig};
 use crate::traits::BaseGame;
 
+use engine_p::interpolable::{Interpolable, Pos2d};
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
 

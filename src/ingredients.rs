@@ -2,11 +2,11 @@
 use crate::images::Image;
 use crate::painter::{ProgressBarConfig, TextConfig};
 use crate::traits::BaseGame;
-use crate::interpolable::{Interpolable, Pos2d};
+
+use engine_p::interpolable::{Interpolable, Pos2d};
+use wasm_bindgen::prelude::*;
 
 use std::rc::Rc;
-
-use wasm_bindgen::prelude::*;
 
 #[wasm_bindgen]
 extern "C" {

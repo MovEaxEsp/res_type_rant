@@ -1,7 +1,6 @@
 mod images;
 mod ingredients;
 mod ingredient_area;
-mod interpolable;
 mod keyword_entry;
 mod order_bar;
 mod painter;
@@ -15,7 +14,7 @@ mod utils;
 use images::{Image, Images, ImagesConfig};
 use ingredient_area::{IngredientArea, IngredientAreaGameConfig, IngredientAreaUiConfig};
 use ingredients::MovableIngredient;
-use interpolable::Pos2d;
+use engine_p::interpolable::Pos2d;
 use js_sys::JsString;
 use keyword_entry::{KeywordEntry, KeywordEntryUiConfig};
 use order_bar::{OrderBar, OrderBarGameConfig, OrderBarUiConfig};

@@ -14,7 +14,8 @@ should not be used as an example for anything.
 ## Building
 
 To compile the Rust into wasm, run `wasm-pack build --target web` at the root of the repo. Setting up
-Rust/Wasmpack is left as an exercise for the user.
+Rust/Wasmpack is left as an exercise for the user.  This depends on https://github.com/moveaxesp/engine_p,
+which must be cloned as 'engine_p' at the same level as this repo.
 
 ## Testing
 

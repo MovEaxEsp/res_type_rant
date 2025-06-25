@@ -1,7 +1,7 @@
 
 use crate::images::{Image, Images, ImagesConfig};
-use crate::interpolable::{Interpolable, Pos2d};
 
+use engine_p::interpolable::{Interpolable, Pos2d};
 use serde::{Serialize,Deserialize};
 use web_sys::OffscreenCanvasRenderingContext2d;
 
