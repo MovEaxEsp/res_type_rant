@@ -301,9 +301,18 @@ static mut S_STATE: Option<Rc<RefCell<GameState>>> = None;
 #[wasm_bindgen]
 pub fn init_state(config: JsValue, canvas: JsValue, images: JsValue, audio_ctx: JsValue, sounds: JsValue, words_db: JsValue, bad_words_db: JsValue) {
     set_panic_hook();
-    
-    let game_config: OuterConfig = serde_wasm_bindgen::from_value(config).unwrap();
 
+    let game_config;
+    match serde_wasm_bindgen::from_value::<OuterConfig>(config) {
+        Ok(cfg) => {
+            game_config = cfg;
+        }
+        Err(e) => {
+            log(&format!("Failed parsing config: {}", e));
+            return;
+        }
+    }
+    
     let order_bar = OrderBar::new(&game_config.ui.order_bar, &game_config.game.order_bar);
 
     let words_bank = WordBank::new(
@@ -404,70 +413,6 @@ pub fn report_keypress(key: &str) {
     }
 }
 
-pub fn build_default_config() -> OuterConfig {
-    OuterConfig {
-        ui: UiConfig {
-            images: Images::default_config(),
-            sounds: Sounds::default_config(),
-            order_bar: OrderBar::default_ui_config(),
-            ingredient_area: IngredientArea::default_ui_config(),
-            preparation_area: PreparationArea::default_config(),
-            store: UpgradeStore::default_config(),
-            keyword_entry: KeywordEntry::default_ui_config(),
-            state: StateArea::default_ui_config(),
-            money: MoneyUiConfig {
-                pos: (50, 50).into(),
-                bg: BackgroundConfig {
-                    offset: (0, -20).into(),
-                    width: 400.0,
-                    height: 250.0,
-                    corner_radius: 30.0,
-                    border_style: "black".to_string(),
-                    border_alpha: 0.3,
-                    border_width: 5.0,
-                    bg_style: "green".to_string(),
-                    bg_alpha: 0.2
-                },
-                text: TextConfig {
-                    offset: (40, 40).into(),
-                    stroke: true,
-                    style: "gold".to_string(),
-                    font: "comic sans".to_string(),
-                    size: 128,
-                    center_and_fit: false,
-                    alpha: 1.0,
-                    is_command: false,
-                }
-            },
-            fps: TextConfig {
-                offset: (0, 0).into(),
-                stroke: false,
-                style: "black".to_string(),
-                font: "comic sans".to_string(),
-                size: 30,
-                center_and_fit: false,
-                alpha: 0.7,
-                is_command: false,
-            },
-        },
-        game: GameConfig {
-            word_level: 0,
-            unlock_all: false,
-            ingredient_area: IngredientArea::default_game_config(),
-            order_bar: OrderBar:: default_game_config(),
-            state: StateArea::default_game_config(),
-            money: MoneyGameConfig {
-                starting_money: 0,
-            },
-        }
-    }
-}
-
-#[wasm_bindgen]
-pub fn default_config() -> JsValue {
-    serde_wasm_bindgen::to_value(&build_default_config()).unwrap()
-}
-
 #[wasm_bindgen]
 pub fn update_config(config: JsValue) {
     match serde_wasm_bindgen::from_value::<OuterConfig>(config) {
@@ -482,22 +427,4 @@ pub fn update_config(config: JsValue) {
             log(&format!("Failed parsing config: {}", e));
         }
     }
-}
-
-#[wasm_bindgen]
-pub fn resource_names() -> JsValue {
-    #[derive(Serialize)]
-    pub struct ResourceList {
-        pub images: Vec<String>,
-        pub sounds: Vec<String>,
-    }
-
-    let cfg = build_default_config();
-
-    let resources = ResourceList {
-        images: cfg.ui.images.images.iter().map(|img| img.image_name.clone()).collect(),
-        sounds: cfg.ui.sounds.sounds.iter().flat_map(|snd| snd.sound_names.iter().cloned()).collect(),
-    };
-
-    serde_wasm_bindgen::to_value(&resources).unwrap()
 }

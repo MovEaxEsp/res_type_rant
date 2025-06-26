@@ -98,32 +98,4 @@ impl KeywordEntry {
     pub fn update_config(&mut self, cfg_ui: &KeywordEntryUiConfig) {
         self.caret_timer.set_speed(cfg_ui.caret_speed);
     }
-
-    pub fn default_ui_config() -> KeywordEntryUiConfig {
-        KeywordEntryUiConfig {
-            pos: (20, 1300).into(),
-            caret_speed: 3.0,
-            bg: BackgroundConfig {
-                offset: (-10, -25).into(),
-                width: 1000.0,
-                height: 100.0,
-                corner_radius: 30.0,
-                border_style: "black".to_string(),
-                border_alpha: 0.3,
-                border_width: 5.0,
-                bg_style: "white".to_string(),
-                bg_alpha: 0.8
-            },
-            text: TextConfig {
-                offset: (0, 0).into(),
-                stroke: false,
-                style: "black".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                center_and_fit: false,
-                alpha: 1.0,
-                is_command: false,
-            }
-        }
-    }
 }

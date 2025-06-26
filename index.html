@@ -33,7 +33,8 @@
       // will "boot" the module and make it ready to use. Currently browsers
       // don't support natively imported WebAssembly as an ES module, but
       // eventually the manual initialization won't be required!
-      import init, { run_frame, report_keypress, init_state, default_config, resource_names, update_config } from './pkg/res_type_rant.js';
+      import init, { run_frame, report_keypress, init_state, update_config } from './pkg/res_type_rant.js';
+      import {genConfig} from './config.js';
 
       let startGameFn = null;
 
@@ -73,7 +74,12 @@
           document.getElementById("configArea").style.display = "none";
         }
 
-        const resources = resource_names();
+        let gameConfig = genConfig();
+
+        const resources = {
+          images: gameConfig.ui.images.images.map(img => img.image_name),
+          sounds: gameConfig.ui.sounds.sounds.map(sng => sng.sound_names).flat(),
+        };
 
         // Figure out if device can play mp3s
         let canPlayOgg = true;//!!(new Audio()).canPlayType("audio/mp3");
@@ -81,7 +87,6 @@
         if (searchParams.has("noSounds") || !canPlayOgg) {
           resources.sounds = [];
         }
-
 
         const images = {};
         
@@ -164,9 +169,6 @@
             event.preventDefault();
           }
         }, true)
-
-
-        let gameConfig = default_config();
 
         let originalCfg = JSON.parse(JSON.stringify(gameConfig));
 

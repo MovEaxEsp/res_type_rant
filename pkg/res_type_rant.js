@@ -215,26 +215,10 @@ export function report_keypress(key) {
 }
 
 /**
- * @returns {any}
- */
-export function default_config() {
-    const ret = wasm.default_config();
-    return ret;
-}
-
-/**
  * @param {any} config
  */
 export function update_config(config) {
     wasm.update_config(config);
-}
-
-/**
- * @returns {any}
- */
-export function resource_names() {
-    const ret = wasm.resource_names();
-    return ret;
 }
 
 async function __wbg_load(module, imports) {
@@ -510,14 +494,6 @@ function __wbg_get_imports() {
         const ret = new OffscreenCanvas(arg0 >>> 0, arg1 >>> 0);
         return ret;
     }, arguments) };
-    imports.wbg.__wbg_new_405e22f390576ce2 = function() {
-        const ret = new Object();
-        return ret;
-    };
-    imports.wbg.__wbg_new_78feb108b6472713 = function() {
-        const ret = new Array();
-        return ret;
-    };
     imports.wbg.__wbg_new_8a6f238a6ece86ea = function() {
         const ret = new Error();
         return ret;
@@ -560,12 +536,6 @@ function __wbg_get_imports() {
     imports.wbg.__wbg_roundRect_a58455b780e2ee31 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
         arg0.roundRect(arg1, arg2, arg3, arg4, arg5);
     }, arguments) };
-    imports.wbg.__wbg_set_37837023f3d740e8 = function(arg0, arg1, arg2) {
-        arg0[arg1 >>> 0] = arg2;
-    };
-    imports.wbg.__wbg_set_3fda3bac07393de4 = function(arg0, arg1, arg2) {
-        arg0[arg1] = arg2;
-    };
     imports.wbg.__wbg_set_65595bdd868b3009 = function(arg0, arg1, arg2) {
         arg0.set(arg1, arg2 >>> 0);
     };
@@ -719,10 +689,6 @@ function __wbg_get_imports() {
         const ret = typeof(obj) === 'number' ? obj : undefined;
         getDataViewMemory0().setFloat64(arg0 + 8 * 1, isLikeNone(ret) ? 0 : ret, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, !isLikeNone(ret), true);
-    };
-    imports.wbg.__wbindgen_number_new = function(arg0) {
-        const ret = arg0;
-        return ret;
     };
     imports.wbg.__wbindgen_string_get = function(arg0, arg1) {
         const obj = arg1;

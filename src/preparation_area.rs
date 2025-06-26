@@ -2,7 +2,7 @@
 use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::painter::{BackgroundConfig, ProgressBarConfig, TextConfig};
-use crate::sounds::{PlaybackConfig, Sound};
+use crate::sounds::{PlaybackConfig};
 use crate::traits::BaseGame;
 
 use engine_p::interpolable::{Interpolable, Pos2d};
@@ -373,111 +373,6 @@ impl PreparationArea {
                     recipe.outputs.iter().for_each(|ing| { ings.insert(*ing); } );
                 }
             }
-        }
-    }
-
-    pub fn default_config() -> PreparationAreaConfig {
-        PreparationAreaConfig {
-            pos: (1200, 800).into(),
-            cookers: vec![
-                CookerConfig {
-                    base_image: Image::Pan,
-                    base_offset: (-10, 10).into(),
-                    cooking_sound: PlaybackConfig {
-                        sound: Sound::Frying,
-                        play_length: None, // will be overwritten with the actual length
-                        random_start: true,
-                    },
-                    done_cooking_sound: PlaybackConfig {
-                        sound: Sound::Done,
-                        play_length: None,
-                        random_start: false,
-                    },
-                    recipes: vec![
-                        CookingRecipe {
-                            inputs: vec![Image::RawPatty],
-                            outputs: vec![Image::CookedPatty],
-                            cook_time: 10.0,
-                        },
-                        CookingRecipe {
-                            inputs: vec![Image::EggsRaw],
-                            outputs: vec![Image::EggsFried],
-                            cook_time: 6.0,
-                        },
-                        CookingRecipe {
-                            inputs: vec![Image::BaconRaw],
-                            outputs: vec![Image::BaconCooked],
-                            cook_time: 8.0,
-                        },
-                    ],
-                    instances: vec![ (0, 100).into(), (300, 100).into(), (600, 100).into()],
-                    num_unlocked: 0,
-                },
-                CookerConfig {
-                    base_image: Image::TriniPot,
-                    base_offset: (0, 10).into(),
-                    cooking_sound: PlaybackConfig {
-                        sound: Sound::Frying,
-                        play_length: None, // will be overwritten with the actual length
-                        random_start: true,
-                    },
-                    done_cooking_sound: PlaybackConfig {
-                        sound: Sound::Done,
-                        play_length: None,
-                        random_start: false,
-                    },
-                    recipes: vec![
-                        CookingRecipe {
-                            inputs: vec![Image::RawCrab, Image::Curry],
-                            outputs: vec![Image::CurryCrab],
-                            cook_time: 15.0,
-                        },
-                        CookingRecipe {
-                            inputs: vec![Image::Flour],
-                            outputs: vec![Image::Dumplings],
-                            cook_time: 5.0,
-                        }
-                    ],
-                    instances: vec![ (0, 550).into(), (300, 550).into(), (600, 550).into()],
-                    num_unlocked: 0,
-                },
-            ],
-            bg: BackgroundConfig {
-                offset: (-50, -70).into(),
-                width: 1300.0,
-                height: 700.0,
-                corner_radius: 30.0,
-                border_style: "black".to_string(),
-                border_alpha: 0.3,
-                border_width: 5.0,
-                bg_style: "orange".to_string(),
-                bg_alpha: 0.2
-            },
-            text: TextConfig {
-                offset: (0, 0).into(),
-                stroke: false,
-                style: "yellow".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                center_and_fit: true,
-                alpha: 0.4,
-                is_command: true,
-            },
-            progress: ProgressBarConfig {
-                bg: BackgroundConfig {
-                    offset: (0, 30).into(),
-                    width: 100.0,
-                    height: 5.0,
-                    corner_radius: 0.0,
-                    border_style: "black".to_string(),
-                    border_alpha: 0.0,
-                    border_width: 0.0,
-                    bg_style: "black".to_string(),
-                    bg_alpha: 0.4
-                },
-                done_alpha: 1.0,
-                done_style: "yellow".to_string(),
-            },
         }
     }
 }

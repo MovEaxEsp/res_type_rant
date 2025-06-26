@@ -113,21 +113,4 @@ impl Sounds {
 
         src.start_with_when_and_grain_offset_and_grain_duration(0.0, snd_offset, snd_duration).expect("play snd");
     }
-
-    pub fn default_config() -> SoundsConfig {
-        fn snd(sound: Sound, sound_names: Vec<&str>) -> SoundConfig {
-            SoundConfig {
-                sound: sound,
-                sound_names: sound_names.iter().map(|name| name.to_string()).collect(),
-            }
-        }
-
-        SoundsConfig {
-            sounds: vec![
-                snd(Sound::Coins, vec!["coins_1.mp3", "coins_2.mp3", "coins_3.mp3"]),
-                snd(Sound::Frying, vec!["frying_1.mp3"]),
-                snd(Sound::Done, vec!["done_1.mp3"]),
-            ]
-        }
-    }
 }

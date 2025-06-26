@@ -100,47 +100,4 @@ impl IngredientArea {
             ings.insert(stack.ingredients[0].image);
         }
     }
-
-    pub fn default_ui_config() -> IngredientAreaUiConfig {
-        IngredientAreaUiConfig {
-            pos: (80, 800).into(),
-            grid_width: 5,
-            grid_item_width: 170.0,
-            grid_item_height: 200.0,
-            bg: BackgroundConfig {
-                offset: (-50, -150).into(),
-                width: 900.0,
-                height: 500.0,
-                corner_radius: 30.0,
-                border_style: "black".to_string(),
-                border_alpha: 0.3,
-                border_width: 5.0,
-                bg_style: "orange".to_string(),
-                bg_alpha: 0.2
-            },
-            text: TextConfig {
-                offset: (0, 0).into(),
-                stroke: false,
-                style: "yellow".to_string(),
-                font: "comic sans".to_string(),
-                size: 48,
-                center_and_fit: true,
-                alpha: 0.4,
-                is_command: true,
-            }
-        }
-    }
-
-    pub fn default_game_config() -> IngredientAreaGameConfig {
-        IngredientAreaGameConfig {
-            ingredients: vec![
-                Image::LettuceLeaf, Image::TomatoSlice
-                /*
-                Image::BurgerBottom, Image::BurgerTop, Image::LettuceLeaf,
-                Image::TomatoSlice, Image::Flour, Image::Curry,
-                Image::RawPatty, Image::RawCrab, Image::BaconRaw, Image::EggsRaw,
-                */
-            ],
-        }
-    }
 }
