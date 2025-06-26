@@ -1,8 +1,7 @@
 
-use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::painter::{BackgroundConfig, TextConfig};
-use crate::traits::BaseGame;
+use crate::traits::{BaseGame, Image};
 use crate::utils::WordBank;
 
 use engine_p::interpolable::{Interpolable, Pos2d};

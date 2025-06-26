@@ -1,7 +1,41 @@
 
 use crate::painter::Painter;
-use crate::sounds::Sounds;
 use crate::utils::WordBank;
+
+use engine_p::sounds::Sounds;
+use serde::{Serialize,Deserialize};
+
+#[derive(Serialize, Deserialize, Clone, PartialEq, Eq, Hash)]
+pub enum Sound {
+    Coins,
+    Frying,
+    Done,
+}
+
+#[derive(PartialEq, Eq, Hash, Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum Image {
+    BaconCooked,
+    BaconRaw,
+    BurgerBottom,
+    BurgerTop,
+    ClosedSign,
+    CookedPatty,
+    Curry,
+    CurryCrab,
+    Dumplings,
+    EggsFried,
+    EggsRaw,
+    Flour,
+    LettuceLeaf,
+    OpenSign,
+    OverlayPlus,
+    Pan,
+    Plate,
+    RawCrab,
+    RawPatty,
+    TomatoSlice,
+    TriniPot,
+}
 
 pub trait BaseGame {
     //fn set_global_alpha(&self, alpha: f64);
@@ -18,7 +52,7 @@ pub trait BaseGame {
 
     fn painter<'a>(&'a self) -> &'a Painter;
 
-    fn sounds(&self) -> &Sounds;
+    fn sounds(&self) -> &Sounds<Sound>;
 
     //fn image_props<'a>(&'a self, image: &Image) -> &'a ImageProps;
 

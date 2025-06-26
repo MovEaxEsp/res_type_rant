@@ -1,7 +1,6 @@
 
-use crate::images::Image;
 use crate::painter::{ProgressBarConfig, TextConfig};
-use crate::traits::BaseGame;
+use crate::traits::{BaseGame, Image};
 
 use engine_p::interpolable::{Interpolable, Pos2d};
 use wasm_bindgen::prelude::*;

@@ -1,11 +1,10 @@
 
-use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::painter::{BackgroundConfig, ProgressBarConfig, TextConfig};
-use crate::sounds::{PlaybackConfig};
-use crate::traits::BaseGame;
+use crate::traits::{BaseGame, Image, Sound};
 
 use engine_p::interpolable::{Interpolable, Pos2d};
+use engine_p::sounds::PlaybackConfig;
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
 
@@ -31,8 +30,8 @@ pub struct CookerConfig {
     pub base_offset: Pos2d,
     pub instances: Vec<Pos2d>,
     pub num_unlocked: i32,
-    pub cooking_sound: PlaybackConfig,
-    pub done_cooking_sound: PlaybackConfig,
+    pub cooking_sound: PlaybackConfig<Sound>,
+    pub done_cooking_sound: PlaybackConfig<Sound>,
 }
 
 #[derive(Serialize, Deserialize, Clone)]

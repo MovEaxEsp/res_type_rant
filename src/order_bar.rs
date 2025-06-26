@@ -1,11 +1,10 @@
 
-use crate::images::Image;
 use crate::ingredients::{IngredientStack, MovableIngredient};
 use crate::painter::{BackgroundConfig, ProgressBarConfig, TextConfig};
-use crate::sounds::{PlaybackConfig};
-use crate::traits::BaseGame;
+use crate::traits::{BaseGame, Image, Sound};
 
 use engine_p::interpolable::{Interpolable, Pos2d};
+use engine_p::sounds::PlaybackConfig;
 use serde::{Serialize,Deserialize};
 use wasm_bindgen::prelude::*;
 
@@ -42,7 +41,7 @@ pub struct OrderBarUiConfig {
     pub text_keyword: TextConfig,
     pub text_remaining: TextConfig,
     pub progress_bar: ProgressBarConfig,
-    pub money_sound: PlaybackConfig,
+    pub money_sound: PlaybackConfig<Sound>,
     pub orders: Vec<OrderConfig>,
 }
 

@@ -1,6 +1,7 @@
 
-use crate::images::{Image, Images, ImagesConfig};
+use crate::traits::Image;
 
+use engine_p::images::{Images, ImagesConfig};
 use engine_p::interpolable::{Interpolable, Pos2d};
 use serde::{Serialize,Deserialize};
 use web_sys::OffscreenCanvasRenderingContext2d;
@@ -48,7 +49,7 @@ pub struct RingConfig {
 
 pub struct Painter {
     canvas: OffscreenCanvasRenderingContext2d,
-    images: Images,
+    images: Images<Image>,
     entered_keywords: Vec<String>,
     keyword_r: Interpolable<f64>,
     keyword_g: Interpolable<f64>,
@@ -57,7 +58,7 @@ pub struct Painter {
 
 impl Painter {
 
-    pub fn new(images: Images, canvas: OffscreenCanvasRenderingContext2d) -> Self {
+    pub fn new(images: Images<Image>, canvas: OffscreenCanvasRenderingContext2d) -> Self {
         Painter {
             canvas: canvas,
             images: images,
@@ -259,7 +260,7 @@ impl Painter {
         self.canvas.set_global_alpha(1.0);
     }
 
-    pub fn update_config(&mut self, cfg_ui_images: &ImagesConfig) {
+    pub fn update_config(&mut self, cfg_ui_images: &ImagesConfig<Image>) {
         self.images.update_config(cfg_ui_images);
     }
 
@@ -267,7 +268,7 @@ impl Painter {
         &mut self.entered_keywords
     }
 
-    pub fn images<'a>(&'a self) -> &'a Images {
+    pub fn images<'a>(&'a self) -> &'a Images<Image> {
         &self.images
     }
 

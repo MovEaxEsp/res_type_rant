@@ -1,8 +1,7 @@
 
-use crate::images::Image;
 use crate::ingredients::{MovableIngredient, IngredientStack};
 use crate::painter::{BackgroundConfig, TextConfig};
-use crate::traits::BaseGame;
+use crate::traits::{BaseGame, Image};
 
 use engine_p::interpolable::{Interpolable, Pos2d};
 use serde::{Serialize,Deserialize};

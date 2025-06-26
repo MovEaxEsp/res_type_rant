@@ -1,30 +1,28 @@
-mod images;
 mod ingredients;
 mod ingredient_area;
 mod keyword_entry;
 mod order_bar;
 mod painter;
 mod preparation_area;
-mod sounds;
 mod state_area;
 mod store;
 mod traits;
 mod utils;
 
-use images::{Image, Images, ImagesConfig};
 use ingredient_area::{IngredientArea, IngredientAreaGameConfig, IngredientAreaUiConfig};
 use ingredients::MovableIngredient;
+use engine_p::images::{Images, ImagesConfig};
 use engine_p::interpolable::Pos2d;
+use engine_p::sounds::{Sounds, SoundsConfig};
 use js_sys::JsString;
 use keyword_entry::{KeywordEntry, KeywordEntryUiConfig};
 use order_bar::{OrderBar, OrderBarGameConfig, OrderBarUiConfig};
 use painter::{BackgroundConfig, Painter, TextConfig};
 use preparation_area::{PreparationArea, PreparationAreaConfig};
 use serde::{Serialize,Deserialize};
-use sounds::{Sounds, SoundsConfig};
 use state_area::{StateArea, StateGameConfig, StateUiConfig};
 use store::{StoreConfig, StoreUpgradeAction, StoreUpgradeConfig, UpgradeStore};
-use traits::BaseGame;
+use traits::{BaseGame, Image, Sound};
 use utils::{set_panic_hook, WordBank};
 use wasm_bindgen::prelude::*;
 use web_sys::{CanvasRenderingContext2d, HtmlCanvasElement, OffscreenCanvas, OffscreenCanvasRenderingContext2d};
@@ -54,8 +52,8 @@ pub struct MoneyGameConfig {
 
 #[derive(Serialize, Deserialize, Clone)]
 pub struct UiConfig {
-    pub images: ImagesConfig,
-    pub sounds: SoundsConfig,
+    pub images: ImagesConfig<Image>,
+    pub sounds: SoundsConfig<Sound>,
     pub order_bar: OrderBarUiConfig,
     pub ingredient_area: IngredientAreaUiConfig,
     pub preparation_area: PreparationAreaConfig,
@@ -87,7 +85,7 @@ struct GameImp {
     cur_money: RefCell<i32>,
     words_bank: WordBank,
     painter: Painter,
-    sounds: Sounds,
+    sounds: Sounds<Sound>,
     config: OuterConfig,
     elapsed_time: f64,  // seconds since previous frame start (for calculating current frame)
 }
@@ -105,7 +103,7 @@ impl BaseGame for GameImp {
         &self.painter
     }
 
-    fn sounds(&self) -> &Sounds {
+    fn sounds(&self) -> &Sounds<Sound> {
         &self.sounds
     }
 
