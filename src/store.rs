@@ -13,6 +13,7 @@ use std::rc::Rc;
 pub enum StoreUpgradeAction {
     UnlockIngredient,
     UnlockCooker,
+    IncreaseLimit,
 }
 
 #[derive(Serialize, Deserialize, Clone, Debug)]

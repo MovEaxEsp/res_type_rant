@@ -48,6 +48,7 @@ pub struct MoneyUiConfig {
 #[derive(Serialize, Deserialize, Clone)]
 pub struct MoneyGameConfig {
     pub starting_money: i32,
+    pub max_money: i32,
 }
 
 #[derive(Serialize, Deserialize, Clone)]
@@ -96,7 +97,11 @@ impl BaseGame for GameImp {
     }
 
     fn add_money(&self, amt: i32) {
-        *self.cur_money.borrow_mut() += amt;
+        let money = &mut *self.cur_money.borrow_mut();
+        *money += amt;
+        if *money > self.config.game.money.max_money {
+            *money = self.config.game.money.max_money;
+        }
     }
 
     fn painter<'a>(&'a self) -> &'a Painter {
@@ -191,9 +196,15 @@ impl GameState {
         self.keyword_entry.draw(&self.imp.config.ui.keyword_entry, &self.imp);
 
         // Draw current money
+        let cur_money = *self.imp.cur_money.borrow();
         let money_pos = self.imp.config.ui.money.pos;
         self.imp.painter().draw_area_background(&money_pos, &self.imp.config.ui.money.bg);
-        self.imp.painter().draw_text(&format!("$ {}", *self.imp.cur_money.borrow()), &money_pos, self.imp.config.ui.money.bg.width, &self.imp.config.ui.money.text);
+        self.imp.painter().draw_text_with_filled(
+                                &format!("$ {}", cur_money),
+                                &money_pos,
+                                self.imp.config.ui.money.bg.width,
+                                cur_money as f64 / self.imp.config.game.money.max_money as f64,
+                                &self.imp.config.ui.money.text);
 
         // Draw FPS
         self.imp.painter().draw_text(&self.fps_str, &(2000, 10).into(), 300.0, &self.imp.config.ui.fps);
@@ -227,6 +238,10 @@ impl GameState {
                     self.imp.config.ui.preparation_area.cookers.iter_mut()
                         .filter(|c| c.base_image == upgr.img)
                         .for_each(|c| c.num_unlocked += 1),
+                StoreUpgradeAction::IncreaseLimit => 
+                    if upgr.img == Image::MoneyBag {
+                        self.imp.config.game.money.max_money *= 2;
+                    }
             }
         }
 

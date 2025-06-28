@@ -25,6 +25,7 @@ pub struct TextConfig {
     pub offset: Pos2d,
     pub stroke: bool,
     pub style: String,
+    pub filled_style: Option<String>,
     pub font: String,
     pub size: i32,
     pub center_and_fit: bool,
@@ -187,13 +188,13 @@ impl Painter {
     }
     */
 
-    pub fn draw_text(&self, text: &str, pos: &Pos2d, width: f64, cfg: &TextConfig) {
+    fn draw_text_imp(&self, text: &str, pos: &Pos2d, width: f64, filled_pct: f64, cfg: &TextConfig) {
         let mut font_size: usize = cfg.size as usize;
 
         self.canvas.set_global_alpha(cfg.alpha);
-        self.canvas.set_fill_style_str(&cfg.style);
-        self.canvas.set_stroke_style_str(&cfg.style);
         self.canvas.set_text_baseline("top");
+        self.canvas.set_stroke_style_str(&cfg.style);
+        self.canvas.set_fill_style_str(&cfg.style);
 
         let mut draw_pos = *pos;
         if cfg.center_and_fit {
@@ -214,12 +215,35 @@ impl Painter {
         draw_pos = draw_pos + cfg.offset;
 
         let draw_fn: Box<dyn Fn(&str, f64, f64)>;
-        if cfg.stroke {
+        if cfg.filled_style != None {
+            draw_fn = Box::new(|text, xpos, ypos| {
+                
+                // Draw the text normally, and then draw again using the 'filled' style
+                self.canvas.fill_text(text, xpos, ypos).expect("text");
+
+                self.canvas.set_fill_style_str(cfg.filled_style.as_ref().unwrap());
+
+                let text_dim = self.canvas.measure_text(text).expect("measure text");
+                self.canvas.save();
+                
+                let text_height = text_dim.actual_bounding_box_ascent() + text_dim.actual_bounding_box_descent();
+                let clip_y = ypos + text_height*(1.0-filled_pct);
+
+                self.canvas.begin_path();
+                self.canvas.rect(xpos, clip_y, text_dim.width(), text_height);
+                self.canvas.clip();
+
+                self.canvas.fill_text(text, xpos, ypos).expect("text");
+                
+                self.canvas.restore();
+            });
+        }
+        else if cfg.stroke { // Stroke
             draw_fn = Box::new(|text, xpos, ypos| {
                 self.canvas.stroke_text(text, xpos, ypos).expect("text");
             });
         }
-        else {
+        else { // Fill
             draw_fn = Box::new(|text, xpos, ypos| {
                 self.canvas.fill_text(text, xpos, ypos).expect("text");
             });
@@ -259,6 +283,15 @@ impl Painter {
 
         self.canvas.set_global_alpha(1.0);
     }
+
+    pub fn draw_text(&self, text: &str, pos: &Pos2d, width: f64, cfg: &TextConfig) {
+        self.draw_text_imp(text, pos, width, 1.0, cfg);
+    }
+    
+    pub fn draw_text_with_filled(&self, text: &str, pos: &Pos2d, width: f64, filled_pct: f64, cfg: &TextConfig) {
+        self.draw_text_imp(text, pos, width, filled_pct, cfg);
+    }
+
 
     pub fn update_config(&mut self, cfg_ui_images: &ImagesConfig<Image>) {
         self.images.update_config(cfg_ui_images);

@@ -262,6 +262,14 @@ function __wbg_get_imports() {
         getDataViewMemory0().setInt32(arg0 + 4 * 1, len1, true);
         getDataViewMemory0().setInt32(arg0 + 4 * 0, ptr1, true);
     };
+    imports.wbg.__wbg_actualBoundingBoxAscent_92809632efc7472b = function(arg0) {
+        const ret = arg0.actualBoundingBoxAscent;
+        return ret;
+    };
+    imports.wbg.__wbg_actualBoundingBoxDescent_acff757c10611031 = function(arg0) {
+        const ret = arg0.actualBoundingBoxDescent;
+        return ret;
+    };
     imports.wbg.__wbg_arc_0192e815445b1961 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5, arg6) {
         arg0.arc(arg1, arg2, arg3, arg4, arg5, arg6 !== 0);
     }, arguments) };
@@ -284,6 +292,9 @@ function __wbg_get_imports() {
     };
     imports.wbg.__wbg_clearRect_8e4ba7ea0e06711a = function(arg0, arg1, arg2, arg3, arg4) {
         arg0.clearRect(arg1, arg2, arg3, arg4);
+    };
+    imports.wbg.__wbg_clip_005815dea515e201 = function(arg0) {
+        arg0.clip();
     };
     imports.wbg.__wbg_closePath_cf0e7130243e1083 = function(arg0) {
         arg0.closePath();
@@ -533,9 +544,18 @@ function __wbg_get_imports() {
         const ret = Math.random();
         return ret;
     };
+    imports.wbg.__wbg_rect_00c560f0cc92818c = function(arg0, arg1, arg2, arg3, arg4) {
+        arg0.rect(arg1, arg2, arg3, arg4);
+    };
+    imports.wbg.__wbg_restore_1ef50af0835a4649 = function(arg0) {
+        arg0.restore();
+    };
     imports.wbg.__wbg_roundRect_a58455b780e2ee31 = function() { return handleError(function (arg0, arg1, arg2, arg3, arg4, arg5) {
         arg0.roundRect(arg1, arg2, arg3, arg4, arg5);
     }, arguments) };
+    imports.wbg.__wbg_save_5f563096e64939da = function(arg0) {
+        arg0.save();
+    };
     imports.wbg.__wbg_set_65595bdd868b3009 = function(arg0, arg1, arg2) {
         arg0.set(arg1, arg2 >>> 0);
     };

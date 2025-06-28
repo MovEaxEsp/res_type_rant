@@ -81,10 +81,7 @@
           sounds: gameConfig.ui.sounds.sounds.map(sng => sng.sound_names).flat(),
         };
 
-        // Figure out if device can play mp3s
-        let canPlayOgg = true;//!!(new Audio()).canPlayType("audio/mp3");
-
-        if (searchParams.has("noSounds") || !canPlayOgg) {
+        if (searchParams.has("noSounds")) {
           resources.sounds = [];
         }
 
